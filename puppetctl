@@ -1,0 +1,226 @@
+#!/bin/bash
+#
+# An apachectl-style script to control a cron scheduled puppet instance
+#
+# Return codes:
+#  + 0, everything's fine
+#  + 1, something went wrong, look for WARNINGs or ERRORs
+#
+# Based on code by Marco Bonetti <marco.bonetti@slackware.it>
+#
+# 7/31/2012 Added some additional status info to 'puppetctl status' - bhourigan
+# 9/21/2012 Added a feature to quickly disable puppet for 1 hour when disable is invoked with no arguments
+# 9/24/2012 Fixed a bug where a sleeping puppet process could run after running 'puppetctl disable'
+#
+
+enable(){
+   sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd
+
+   if [ -f /var/lib/puppet/state/disabled.at ]; then
+      rm -f /var/lib/puppet/state/disabled.at
+      echo "Puppet has been enabled"
+   else
+      echo "Puppet is already enabled"
+   fi
+}
+
+disable(){
+   until [ -z "$1" ]; do
+      case "$1" in
+         -m|--message)
+            message="$2"
+            shift 2
+            ;;
+         -t|--time)
+            time="$2"
+            shift 2
+            ;;
+         -f|--force)
+            force=1
+            shift 1
+            ;;
+         *)
+            echo "Invalid option: $1"
+            exit 1
+            ;;
+      esac
+   done
+
+   pid=$(ps auwwx | grep -i 'puppet agent' | grep -v 'grep\|/bin/sh' | awk '{print $2}')
+   if [ ${force:-0} -gt 0 ]; then
+      security=$(echo $pid | tr -d '[:digit:]')
+
+      if [ ! -z "$security" ]; then
+         echo "WARNING: Extra characters detected in pid field from ps: \"$security\" (pid: $pid)"
+         exit 1
+      fi
+
+      if [ ! -z "$pid" ]; then
+         echo -n "Puppet already running as pid $pid, killing with -TERM"
+         while kill -0 $pid 2>/dev/null; do
+            kill -TERM $pid 2>/dev/null
+            echo -n .
+            sleep 1
+         done
+         echo " killed."
+      fi
+   else
+      if [ ! -z "$pid" ]; then
+         echo -e "\033[0;36mnotice: Run of Puppet configuration client already in progress; skipping\033[0m"
+         exit 1
+      fi
+   fi
+
+
+   if [ -f /var/lib/puppet/state/disabled.at ]; then
+      if [ ${force:-0} -eq 0 ]; then
+         echo "Puppet is already disabled:"
+         echo
+         grep 'Puppet has been disabled' /etc/motd | sed -r "s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g"
+         exit 1
+      else
+         sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd
+      fi
+   fi
+
+   if [ -z "$message" ]; then
+      if [ -z "$time" ]; then
+         time="now + 1 hour"
+      else
+         usage
+      fi
+   fi
+
+   echo "sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd" > /var/lib/puppet/state/disabled.at
+   echo "rm -f /var/lib/puppet/state/disabled.at" >> /var/lib/puppet/state/disabled.at
+   output=$(at -f /var/lib/puppet/state/disabled.at "$time" 2>&1)
+   if [ $? -ne 0 ]; then
+      rm -f /var/lib/puppet/state/disabled.at
+      echo "$output"
+      exit 1
+   fi
+
+   if [ ! -z "$SUDO_USER" ]; then
+      invoking_user="$SUDO_USER"
+   else
+      invoking_user="$USER"
+   fi
+
+   real_time=$(echo "$output" | sed '/^job.*at */!d; s///;q')
+   if [ -z "$message" ]; then
+      echo -e "\033[1;31mPuppet has been disabled by $invoking_user at $(date "+%Y-%m-%d %H:%M") until $real_time\033[0m" | tee -a /etc/motd
+   else
+      echo -e "\033[1;31mPuppet has been disabled by $invoking_user at $(date "+%Y-%m-%d %H:%M") until $real_time with the following message: $message\033[0m" | tee -a /etc/motd
+   fi
+}
+
+run(){
+   if [ ! -f /var/lib/puppet/state/disabled.at ]; then
+      pid=$(ps auwwx | grep -i 'puppet agent' | grep -v 'grep\|/bin/sh' | awk '{print $2}')
+      security=$(echo $pid | tr -d '[:digit:]')
+
+      if [ ! -z "$security" ]; then
+         echo "WARNING: Extra characters detected in pid field from ps: \"$security\" (pid: $pid)"
+         exit 1
+      fi
+
+      if [ ! -z "$pid" ]; then
+         age=$(stat -c '%Y' /proc/$pid)
+         current=$(date "+%s")
+         delta=$(expr $current - $age)
+
+         if [ ! -z "$delta" ] && [ "$delta" -gt 3600 ]; then
+            echo "Killed hung puppet process, had been running for $delta seconds"
+            kill -9 $pid
+         fi
+      fi
+
+      puppet agent --enable
+      if [ -t 0 ]; then
+         puppet agent --verbose --onetime --no-daemonize --no-splay $@
+      else
+	 puppet agent --verbose --onetime --no-daemonize $@
+      fi
+   else
+      if [ -t 0 ]; then
+         grep -v '^[ 	]*#' /etc/cron.d/puppetcheck | grep -q 'puppet agent\|puppetctl'
+         if [ $? -ne 0 ]; then
+            echo "Puppet has not been disabled with puppetctl, but it seems to be commented out in /etc/cron.d/puppetcheck. Not running puppet."
+         else
+            grep 'Puppet has been disabled' /etc/motd | sed -r "s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g"
+         fi
+
+         exit 1
+      fi
+   fi
+}
+
+status(){
+   if [ ! -f /var/lib/puppet/state/disabled.at ]; then
+      if [ -f /etc/cron.d/puppetcheck ]; then
+         grep -v '^[ 	]*#' /etc/cron.d/puppetcheck | grep -q 'puppet agent\|puppetctl'
+         if [ $? -eq 0 ]; then
+            if [ -x /usr/bin/puppet ]; then
+               if [ -f /var/lib/puppet/state/last_run_summary.yaml ]; then
+                  age=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts Time.now.to_i - output['time']['last_run'].to_i")
+                  errors=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts output['resources']['failed']")
+
+                  echo "Puppet is enabled, last ran $(($age/3600))d $(($age%3600/60))m $(($age%60))s ago with $errors errors."
+               else
+                  echo "Puppet is enabled"
+               fi
+               exit 0
+            else
+               echo "Puppet has not been disabled with puppetctl, but it seems /usr/bin/puppet is not set to be executable"
+               exit 1
+            fi
+         else
+            echo "Puppet has not been disabled with puppetctl, but puppet seems to be commented out in /etc/cron.d/puppetcheck"
+            exit 1
+         fi
+      else
+         echo "Puppet has not been disabled with puppetctl, but /etc/cron.d/puppetcheck seems to be missing"
+         exit 1
+      fi
+   else
+      grep 'Puppet has been disabled' /etc/motd | sed -r "s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g"
+      exit 1
+   fi
+}
+
+usage() {
+   echo -e "Usage: $0 [enable|disable|run|status] <parameters>"
+   echo -e "\tdisable <-t|--time <at time spec of disable duration> [<-f|--force>] [<-m|--message> <message>]"
+   echo -e "\trun <puppet agent arguments, like --noop>"
+   echo
+   exit 1
+}
+
+# check root
+if [ ! "${EUID}" = "0" ]; then
+   echo "You need root privileges to run $0"
+   exit 1
+fi
+
+case "$1" in
+   'enable')
+      enable
+      ;;
+   'disable')
+      shift 1
+      disable "$@"
+      ;;
+   'run')
+      shift 1
+      run "$@"
+      ;;
+   'status')
+      status
+      ;;
+   *)
+      usage
+      ;;
+esac
+
+exit 0
+
