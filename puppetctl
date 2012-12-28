@@ -11,7 +11,18 @@
 # 7/31/2012 Added some additional status info to 'puppetctl status' - bhourigan
 # 9/21/2012 Added a feature to quickly disable puppet for 1 hour when disable is invoked with no arguments
 # 9/24/2012 Fixed a bug where a sleeping puppet process could run after running 'puppetctl disable'
+# 12/27/2012 Added "cron_run" option with random delay; to help spread puppetmaster load - mhenry
 #
+
+cron_run(){
+   # delay 0-300 seconds before running, to spread out load a little
+   # add delay as a command line option?
+
+   delay=$(($RANDOM % 300))
+   echo "Sleeping for ${delay} seconds before running..."
+   sleep ${delay}
+   run $@
+}
 
 enable(){
    sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd
@@ -189,7 +200,7 @@ status(){
 }
 
 usage() {
-   echo -e "Usage: $0 [enable|disable|run|status] <parameters>"
+   echo -e "Usage: $0 [enable|disable|run|cron_run|status] <parameters>"
    echo -e "\tdisable <-t|--time <at time spec of disable duration> [<-f|--force>] [<-m|--message> <message>]"
    echo -e "\trun <puppet agent arguments, like --noop>"
    echo
@@ -213,6 +224,10 @@ case "$1" in
    'run')
       shift 1
       run "$@"
+      ;;
+   'cron_run')
+      shift 1
+      cron_run "$@"
       ;;
    'status')
       status
