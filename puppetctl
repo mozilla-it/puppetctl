@@ -8,10 +8,12 @@
 #
 # Based on code by Marco Bonetti <marco.bonetti@slackware.it>
 #
-# 7/31/2012 Added some additional status info to 'puppetctl status' - bhourigan
-# 9/21/2012 Added a feature to quickly disable puppet for 1 hour when disable is invoked with no arguments
-# 9/24/2012 Fixed a bug where a sleeping puppet process could run after running 'puppetctl disable'
-#
+# 7/31/2012  Added some additional status info to 'puppetctl status' - bhourigan
+# 9/21/2012  Added a feature to quickly disable puppet for 1 hour when disable is invoked with no arguments
+# 9/24/2012  Fixed a bug where a sleeping puppet process could run after running 'puppetctl disable'
+# 11/7/2012  Added a check to see if disabled.at is 0 bytes (disk full) and alert user
+# 11/13/2012 Added a check to see if last_run_summary.yaml is incomplete, throwing an appropriate error message
+# 12/13/2012 Fixed a bug where it would erroneously detect invalid characters from ps when multiple puppet instances were running
 
 enable(){
    sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd
@@ -48,7 +50,7 @@ disable(){
 
    pid=$(ps auwwx | grep -i 'puppet agent' | grep -v 'grep\|/bin/sh' | awk '{print $2}')
    if [ ${force:-0} -gt 0 ]; then
-      security=$(echo $pid | tr -d '[:digit:]')
+      security=$(echo $pid | tr -d '[:digit:][:space:]')
 
       if [ ! -z "$security" ]; then
          echo "WARNING: Extra characters detected in pid field from ps: \"$security\" (pid: $pid)"
@@ -66,7 +68,7 @@ disable(){
       fi
    else
       if [ ! -z "$pid" ]; then
-         echo -e "\033[0;36mnotice: Run of Puppet configuration client already in progress; skipping\033[0m"
+         echo -e "\033[0;36mnotice: Run of Puppet configuration client already in progress; skipping (hint: puppetctl disable -f to kill the running process)\033[0m"
          exit 1
       fi
    fi
@@ -87,12 +89,18 @@ disable(){
       if [ -z "$time" ]; then
          time="now + 1 hour"
       else
-         usage
+         usage "missing message"
       fi
    fi
 
    echo "sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd" > /var/lib/puppet/state/disabled.at
    echo "rm -f /var/lib/puppet/state/disabled.at" >> /var/lib/puppet/state/disabled.at
+   if [ ! -s /var/lib/puppet/state/disabled.at ]; then
+      rm -f /var/lib/puppet/state/disabled.at
+      echo -e "\033[1;31mDisk is full. Refusing to disable puppet.\033[0m"
+      exit 2
+   fi
+
    output=$(at -f /var/lib/puppet/state/disabled.at "$time" 2>&1)
    if [ $? -ne 0 ]; then
       rm -f /var/lib/puppet/state/disabled.at
@@ -162,10 +170,14 @@ status(){
          if [ $? -eq 0 ]; then
             if [ -x /usr/bin/puppet ]; then
                if [ -f /var/lib/puppet/state/last_run_summary.yaml ]; then
-                  age=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts Time.now.to_i - output['time']['last_run'].to_i")
-                  errors=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts output['resources']['failed']")
+                  age=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts Time.now.to_i - output['time']['last_run'].to_i" 2>/dev/null)
+                  errors=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts output['resources']['failed']" 2>/dev/null)
 
-                  echo "Puppet is enabled, last ran $(($age/3600))d $(($age%3600/60))m $(($age%60))s ago with $errors errors."
+                  if [ -z "$age" ] || [ -z "$errors" ]; then
+                     echo "Puppet is enabled, but /var/lib/puppet/state/last_run_summary.yaml is incomplete (puppet is broken)"
+                  else
+                     echo "Puppet is enabled, last ran $(($age/3600))d $(($age%3600/60))m $(($age%60))s ago with $errors errors."
+                  fi
                else
                   echo "Puppet is enabled"
                fi
@@ -189,8 +201,12 @@ status(){
 }
 
 usage() {
+   if [ $# -gt 0 ]; then
+      echo "ERROR: $*"
+      echo
+   fi
    echo -e "Usage: $0 [enable|disable|run|status] <parameters>"
-   echo -e "\tdisable <-t|--time <at time spec of disable duration> [<-f|--force>] [<-m|--message> <message>]"
+   echo -e "\tdisable <-t|--time <at time spec of disable duration> [<-f|--force>] <-m|--message> <message>"
    echo -e "\trun <puppet agent arguments, like --noop>"
    echo
    exit 1
