@@ -14,6 +14,7 @@
 # 11/7/2012  Added a check to see if disabled.at is 0 bytes (disk full) and alert user
 # 11/13/2012 Added a check to see if last_run_summary.yaml is incomplete, throwing an appropriate error message
 # 12/13/2012 Fixed a bug where it would erroneously detect invalid characters from ps when multiple puppet instances were running
+# 1/10/2013  Added posix time spec support, improved command line documentation
 
 enable(){
    sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd
@@ -35,6 +36,11 @@ disable(){
             ;;
          -t|--time)
             time="$2"
+            shift 2
+            ;;
+         -T|--posixtime)
+            time="$2"
+            posix="-t"
             shift 2
             ;;
          -f|--force)
@@ -101,7 +107,7 @@ disable(){
       exit 2
    fi
 
-   output=$(at -f /var/lib/puppet/state/disabled.at "$time" 2>&1)
+   output=$(at -f /var/lib/puppet/state/disabled.at ${posix:-} "$time" 2>&1)
    if [ $? -ne 0 ]; then
       rm -f /var/lib/puppet/state/disabled.at
       echo "$output"
@@ -205,9 +211,46 @@ usage() {
       echo "ERROR: $*"
       echo
    fi
-   echo -e "Usage: $0 [enable|disable|run|status] <parameters>"
-   echo -e "\tdisable <-t|--time <at time spec of disable duration> [<-f|--force>] <-m|--message> <message>"
-   echo -e "\trun <puppet agent arguments, like --noop>"
+   echo -e "Usage: $0 <command> [<options>]"
+   echo
+   echo "Commands:"
+   echo "---------"
+   echo "   enable       Enable puppet"
+   echo "   disable      Disable puppet"
+   echo "   run          Puppet agent run"
+   echo "   status       Enable puppet"
+   echo
+   echo "Options:"
+   echo "--------"
+   echo "   enable"
+   echo "      No options"
+   echo
+   echo "   disable"
+   echo "      -t"
+   echo "      --time time"
+   echo "         Set the disable expiration time using at(1) specification. Defaults"
+   echo "         to 1 hour"
+   echo
+   echo "      -T"
+   echo "      --posixtime [[CC]YY]MMDDhhmm[.SS]"
+   echo "         Set the disable expiration time using POSIX time format. Defaults"
+   echo "         to 1 hour"
+   echo
+   echo "      -f"
+   echo "      --force"
+   echo "         Force disable. If puppet is running it will be terminated, it will"
+   echo "         override any existing disable"
+   echo
+   echo "      -m"
+   echo "      --message"
+   echo "         Set a message that will be displayed in /etc/motd and any time the"
+   echo "         status is queried with puppetctl."
+   echo
+   echo "   run"
+   echo "      No options"
+   echo
+   echo "   status"
+   echo "      No options"
    echo
    exit 1
 }
