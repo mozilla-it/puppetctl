@@ -15,6 +15,9 @@
 # 11/13/2012 Added a check to see if last_run_summary.yaml is incomplete, throwing an appropriate error message
 # 12/13/2012 Fixed a bug where it would erroneously detect invalid characters from ps when multiple puppet instances were running
 # 1/10/2013  Added posix time spec support, improved command line documentation
+# 02/06/2013 Added supports -t 5 hour (instead of -t now + 5 hour)
+
+startswith() { [ "${1#$2}" != "$1" ]; }
 
 enable(){
    sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd
@@ -98,6 +101,10 @@ disable(){
          usage "missing message"
       fi
    fi
+
+   startswith "now", $time || {
+      time="now + $time"
+   }
 
    echo "sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd" > /var/lib/puppet/state/disabled.at
    echo "rm -f /var/lib/puppet/state/disabled.at" >> /var/lib/puppet/state/disabled.at
