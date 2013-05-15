@@ -23,7 +23,7 @@ case $puppetversion in
       statedir=$(puppet config print statedir)
       ;;
    *)
-      echo "Sorry, puppet version ${puppetversion} is unsupported by $0"
+      echo "Sorry, puppet version ${puppetversion:-UNKNOWN} is unsupported by $0"
       exit 1
       ;;
 esac
@@ -59,17 +59,17 @@ check_last_run_time(){
       # Parse last_last run from statefile
       last_run_time=$(awk '/\s*last_run:/ {print $2}' $statefile)
       if [ ${last_run_time:-0} -eq 0 ]; then
-         result "UNKNOWN: Can't get last_run from $statefile" 3
+         result "Can't get last_run from $statefile" 3
       fi
 
       now=$(date "+%s")
       time_since_last=$((now-last_run_time))
       if [ $time_since_last -gt $threshold ]; then
-         result "UNKNOWN: Last run was ${time_since_last} seconds ago" 3
+         result "Last run was ${time_since_last} seconds ago" 3
       fi
    else
       comment=$(grep 'Puppet has been disabled' /etc/motd | sed -r "s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g")
-      result "DISABLED: ${comment}" 0
+      result "${comment}" 0
    fi
 }
 
@@ -80,21 +80,24 @@ check_last_run_errors(){
    sum_of_fail=$((failed+failure+failure_to_restart))
 
    if [ ${sum_of_fail:-0} -gt 0 ]; then
-      result "WARNING: Last run had ${sum_of_fail} errors" 1
+      if [ ${sum_of_fail:-0} -gt 1 ]; then
+         s="s"
+      fi
+      result "Last run had ${sum_of_fail} error${s:-}" 1
    fi
 }
 
 check_catalog_compile(){
-   failed_catalog=$(awk -F '"' '/\s*Could not retrieve catalog from remote server:/ {print $2}' $reportfile)
+   failed_catalog=$(awk -F '"' '/\s*Could not retrieve catalog from remote server:|\s*Failed to apply catalog/ {gsub(/on node .*/,"",$2); print $2}' $reportfile)
 
    if [ ! -z "${failed_catalog:-}" ]; then
-      result "CRITICAL: ${failed_catalog}" 2
+      result "${failed_catalog}" 2
    fi
 }
 
 result_ok(){
-   catalogversion=$(awk -F '"' '/\s*config:/ {print $2}' $statefile)   
-   result "OK: Puppet agent ${puppetversion} running catalog ${catalogversion:-Unversioned}" 0
+   configuration_version=$(awk -F '"' '/\s*configuration_version:/ {print $2}' $reportfile)
+   result "Puppet agent ${puppetversion} running catalog ${configuration_version:-UNKNOWN}" 0
 }
 
 while getopts ":t:s:d:c" opt; do
@@ -124,11 +127,11 @@ while getopts ":t:s:d:c" opt; do
 done
 
 if [ ! -f $statefile ]; then
-   result "UNKNOWN: State file $statefile doesn't exist" 3
+   result "State file $statefile doesn't exist" 3
 fi
 
 if [ ! -f $reportfile ]; then
-   result "UNKNOWN: Report file $reportfile doesn't exist" 3
+   result "Report file $reportfile doesn't exist" 3
 fi
 
 # Nagios won't allow us to have different alerting timers for different
