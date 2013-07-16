@@ -21,6 +21,13 @@ enable(){
 
    if [ -f /var/lib/puppet/state/disabled.at ]; then
       rm -f /var/lib/puppet/state/disabled.at
+      for each in `atq | cut -f1`
+      do
+         if at -c $each | grep --quiet "rm -f /var/lib/puppet/state/disabled.at"
+         then
+            atrm $each
+         fi
+      done
       echo "Puppet has been enabled"
    else
       echo "Puppet is already enabled"
