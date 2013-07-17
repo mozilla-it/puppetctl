@@ -21,6 +21,7 @@
 # 03/06/2013  bhourigan   Attempting to address bug 830343 again
 # 03/12/2013  rsoderberg  Added DISABLE_EXPIRATION_TIME, use it in help text as well.
 # 03/19/2013  bhourigan   Colorized puppet 3.x notices, changed cron detection method from stdin tty to environment variable (thanks :atoll)
+# 06/17/2013  rsoderberg  Fix new option '-d <datespec>', which takes a time, a date, an ISO time, or +_[mhd].
 
 DISABLE_EXPIRATION_TIME='now + 1 hour'
 PUPPET_AGENT_OPTIONS='--verbose --onetime --no-daemonize'
@@ -46,8 +47,6 @@ log_print(){
          echo "puppetctl: $1"
       fi
    fi
-
-   exit 1
 }
 
 # error_print "message" $color
@@ -95,6 +94,16 @@ disable(){
             time="$2"
             shift 2
             ;;
+         -d|--date)
+            if [ -z "$2" ]; then
+               error_print "missing argument to $1"
+            fi
+
+            full_args="$full_args $1 '${2//\'/\\\'}'"
+            time="$2"
+            parsedate="yes"
+            shift 2
+            ;;
          -T|--posixtime)
             if [ -z "$2" ]; then
                error_print "missing argument to $1"
@@ -116,7 +125,85 @@ disable(){
       esac
    done
 
-   pid=$(ps auwwx | grep -i 'puppet agent\|puppetd ' | grep -v 'grep\|/bin/sh' | awk '{print $2}')
+   if [[ -n "$parsedate" ]]; then
+       # at(1) timespecs are terrible. So we force sensible timespecs.
+
+       keep_parsing='true'
+
+       if $keep_parsing; then
+           # hh:mm is the easiest. The colon is mandatory.
+           #                           H  H       M  M
+           echo "$time" | grep -q '^[0-2][0-9]:[0-5][0-9]$'
+           if [[ "${PIPESTATUS[1]}" == "0" ]]; then
+               # No modification required! at(1) handles this okay.
+               keep_parsing='false'
+           fi
+       fi
+
+       if $keep_parsing; then
+           # YYYYMMDDhhmm is the easiest. Limited to 21st century.
+           #                        YY   Y  Y      M  M      D  D      H  H      M  M
+           echo "$time" | grep -q '^20[0-9][0-9][0-1][0-9][0-3][0-9][0-2][0-9][0-5][0-9]$'
+           if [[ "${PIPESTATUS[1]}" == "0" ]]; then
+               # No modification required! It's a valid POSIX timestamp.
+               posix='-t'
+               keep_parsing='false'
+           fi
+       fi
+
+       if $keep_parsing; then
+           # YYYYMMDD is the next easiest. We have to append hhmm 0000 to it.
+           #                        YY   Y  Y      M  M      D  D
+           echo "$time" | grep -q '^20[0-9][0-9][0-1][0-9][0-3][0-9]$'
+           if [[ "${PIPESTATUS[1]}" == "0" ]]; then
+               # Modify it to be a valid POSIX timestamp, to prevent MMDDhhmm parsing.
+               time="${time}0000"
+               posix='-t'
+               keep_parsing='false'
+           fi
+       fi
+
+       if $keep_parsing; then
+           # +__[m|h|d] is easy, we just need to convert to at timespec.
+           echo "$time" | grep -q '^\+[0-9]*[mhd]$'
+           if [[ "${PIPESTATUS[1]}" == "0" ]]; then
+               # Let's make this an at(1) timespec.
+               duration="$(echo "$time" | cut -d'+' -f2 | rev | cut -c2- | rev)"
+               if [[ "$duration" -le 0 ]]; then
+                   echo "Invalid duration argument to -d, aborting."
+                   exit 1
+               fi
+               unit="$(echo "$time" | rev | cut -c1 | rev)"
+               case "$unit" in
+                   m)
+                       unit="minutes"
+                       ;;
+                   h)
+                       unit="hours"
+                       ;;
+                   d)
+                       unit="days"
+                       ;;
+                   *)
+                       unit=
+               esac
+               if [[ -z "$unit" ]]; then
+                   echo "Invalid unit argument to -d, aborting."
+                   exit 1
+               fi
+               time="now + ${duration} ${unit}"
+               keep_parsing='false'
+           fi
+       fi
+
+       if $keep_parsing; then
+           # Nothing above parsed the date successfully.
+           echo "Invalid argument to -d, aborting."
+           exit 1
+       fi
+   fi
+
+   pid=$(ps auwwx | grep -i 'puppet agent\|puppetd ' | grep -v 'grep\|/bin/sh' | awk '{print $2}' | head -n 1)
    if [ ${force:-0} -gt 0 ]; then
       security=$(echo $pid | tr -d '[:digit:][:space:]')
 
@@ -219,7 +306,7 @@ run(){
          fi
       fi
 
-      puppet agent --enable
+      puppet agent --enable >/dev/null 2>&1
       if [ -t 0 ] || [ -z "$MAILTO" ]; then
          if [ -x /usr/bin/stdbuf ]; then
             puppet agent $PUPPET_AGENT_OPTIONS --no-splay $@ | stdbuf -o0 awk '/^[Nn]otice/ {print "\033[1;35m" $0 "\033[0m"; next} {print $0}'
@@ -308,6 +395,13 @@ usage() {
    echo "      --posixtime [[CC]YY]MMDDhhmm[.SS]"
    echo "         Set the disable expiration time using POSIX time format instead."
    echo
+   echo "      -d"
+   echo "      --date FORMAT"
+   echo "         Set the disable expiration time using one of these formats:"
+   echo "           Duration: +__m, +__h, +__d (minutes, hours, days from now)"
+   echo "           Time: hh:mm, YYYYMMDDhhmm"
+   echo "           Date: YYYYMMDD (at midnight)"
+   echo
    echo "      -f"
    echo "      --force"
    echo "         Force disable. If puppet is running it will be terminated, it will"
@@ -324,6 +418,14 @@ usage() {
    echo "   status"
    echo "      No options"
    echo
+   echo "Examples:"
+   echo "--------"
+   echo "# puppetctl disable -t 'now + 2 days' -m 'Disabled for 2 days'"
+   echo "# puppetctl disable -f -m 'Disabled for 1 hour, killing puppet if its running'"
+   echo "# puppetctl disable -T 201510211629 -m 'I will buy you a beer if you recognize the date'"
+   echo "# puppetctl run --noop"
+   echo
+   echo "Want more examples? File a bug!"
    exit 1
 }
 
