@@ -8,7 +8,7 @@
 #
 # Based on code by Marco Bonetti <marco.bonetti@slackware.it>
 #
-# 07/31/2012  bhourigan   Added some additional status info to 'puppetctl status' - bhourigan
+# 07/31/2012  bhourigan   Added some additional status info to 'puppetctl status'
 # 09/21/2012  bhourigan   Added a feature to quickly disable puppet for 1 hour when disable is invoked with no arguments
 # 09/24/2012  bhourigan   Fixed a bug where a sleeping puppet process could run after running 'puppetctl disable'
 # 11/07/2012  bhourigan   Added a check to see if disabled.at is 0 bytes (disk full) and alert user
@@ -22,6 +22,10 @@
 # 03/12/2013  rsoderberg  Added DISABLE_EXPIRATION_TIME, use it in help text as well.
 # 03/19/2013  bhourigan   Colorized puppet 3.x notices, changed cron detection method from stdin tty to environment variable (thanks :atoll)
 # 06/17/2013  rsoderberg  Fix new option '-d <datespec>', which takes a time, a date, an ISO time, or +_[mhd].
+# 06/24/2013  bhourigan   Redirected 'puppet agent --enable' output to /dev/null as recent Puppet changes caused confusion for the user
+# 08/19/2013  bhourigan   Updated 'puppetctl run' documentation to reflect that options are silently passed to 'puppet agent'
+# 09/04/2013  bhourigan   Second try at fixing ps output warning bug. There are two places where ps output is sanitized and falsely triggering a warning
+# 09/24/2013  bhourigan   The disable message is no longer recorded in /etc/motd, instead this has been relocated to a profile.d script. Cleaned up some code
 
 DISABLE_EXPIRATION_TIME='now + 1 hour'
 PUPPET_AGENT_OPTIONS='--verbose --onetime --no-daemonize'
@@ -56,7 +60,7 @@ error_print(){
 }
 
 enable(){
-   sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd
+   rm -f /var/run/puppetctl.status
 
    if [ -f /var/lib/puppet/state/disabled.at ]; then
       if [ -f /var/lib/puppet/state/disabled.at.job ]; then
@@ -229,19 +233,18 @@ disable(){
       fi
    fi
 
-
    if [ -f /var/lib/puppet/state/disabled.at ]; then
       if [ ${force:-0} -eq 0 ]; then
          log_print "Puppet is already disabled (hint: $full_args -f; to override)"
          echo
-         grep 'Puppet has been disabled' /etc/motd | sed -r "s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g"
-         exit 1
+         error_print "$(cat /var/run/puppetctl.status)" "1;31"
       else
          if [ -f /var/lib/puppet/state/disabled.at.job ]; then
             atrm $(cat /var/lib/puppet/state/disabled.at.job)
             rm -f /var/lib/puppet/state/disabled.at.job
          fi
-         sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd
+
+         rm -f /var/run/puppetctl.status
       fi
    fi
 
@@ -256,40 +259,51 @@ disable(){
    fi
 
    echo "logger -t \"puppetctl[$invoking_user]\" Puppet has been enabled on schedule" > /var/lib/puppet/state/disabled.at
-   echo "sed -i.bak -e '/Puppet has been disabled by/d' /etc/motd" >> /var/lib/puppet/state/disabled.at
-   echo "rm -f /var/lib/puppet/state/disabled.at" >> /var/lib/puppet/state/disabled.at
+   echo "rm -f /var/lib/puppet/state/disabled.at /var/run/puppetctl.status" >> /var/lib/puppet/state/disabled.at
    if [ ! -s /var/lib/puppet/state/disabled.at ]; then
-      rm -f /var/lib/puppet/state/disabled.at
+      enable
       error_print "Disk might be full. Can't write to /var/lib/puppet/state/disabled.at. Refusing to disable puppet." "1;31"
    fi
 
    output=$(at -f /var/lib/puppet/state/disabled.at ${posix:-} "$time" 2>&1)
    status=$?
    if [ $status -ne 0 ]; then
-      rm -f /var/lib/puppet/state/disabled.at
       log_print "ERROR: at returned non-zero exit status $status"
       echo
       echo "$output"
+      enable
       exit 1
    else
       job=$(echo "$output" | sed -e 's/job \([[:digit:]]*\) at.*/\1/g')
       if [ ! -z "$job" ]; then
          echo $job > /var/lib/puppet/state/disabled.at.job
+
+         if [ ! -s /var/lib/puppet/state/disabled.at.job ]; then
+            enable
+            error_print "Disk might be full. Can't write to /var/lib/puppet/state/disabled.at.job. Refusing to disable puppet." "1;31"
+         fi
       fi
    fi
 
    real_time=$(echo "$output" | sed '/^job.*at */!d; s///;q')
    if [ -z "$message" ]; then
-      log_print "Puppet has been disabled by $invoking_user at $(date "+%Y-%m-%d %H:%M") until $real_time" "1;31" | tee -a /etc/motd
+      string="Puppet has been disabled by $invoking_user at $(date "+%Y-%m-%d %H:%M") until $real_time"
    else
-      log_print "Puppet has been disabled by $invoking_user at $(date "+%Y-%m-%d %H:%M") until $real_time with the following message: $message" "1;31" | tee -a /etc/motd
+      string="Puppet has been disabled by $invoking_user at $(date "+%Y-%m-%d %H:%M") until $real_time with the following message: $message"
    fi
+
+   echo "$string" > /var/run/puppetctl.status
+   if [ ! -s /var/run/puppetctl.status ]; then
+      enable
+      error_print "Disk might be full. Can't write to /var/run/puppetctl.status. Refusing to disable puppet." "1;31"
+   fi
+   log_print "$string" "1;31"
 }
 
 run(){
    if [ ! -f /var/lib/puppet/state/disabled.at ]; then
       pid=$(ps auwwx | grep -i 'puppet agent' | grep -v 'grep\|/bin/sh' | awk '{print $2}')
-      security=$(echo $pid | tr -d '[:digit:]')
+      security=$(echo $pid | tr -d '[:digit:][:space:]')
 
       if [ ! -z "$security" ]; then
          error_print "WARNING: Extra characters detected in pid field from ps: \"$security\" (pid: $pid)"
@@ -308,11 +322,7 @@ run(){
 
       puppet agent --enable >/dev/null 2>&1
       if [ -t 0 ] || [ -z "$MAILTO" ]; then
-         if [ -x /usr/bin/stdbuf ]; then
-            puppet agent $PUPPET_AGENT_OPTIONS --no-splay $@ | stdbuf -o0 awk '/^[Nn]otice/ {print "\033[1;35m" $0 "\033[0m"; next} {print $0}'
-         else
-            puppet agent $PUPPET_AGENT_OPTIONS --no-splay $@
-         fi
+         puppet agent $PUPPET_AGENT_OPTIONS --no-splay $@
       else
 	 puppet agent $PUPPET_AGENT_OPTIONS $@
       fi
@@ -321,12 +331,10 @@ run(){
          grep -v '^[ 	]*#' /etc/cron.d/puppetcheck | grep -q 'puppet agent\|puppetctl'
 
          if [ $? -ne 0 ]; then
-            log_print "Puppet has not been disabled with puppetctl, but it seems to be commented out in /etc/cron.d/puppetcheck. Not running puppet."
+            error_print "Puppet has not been disabled with puppetctl, but it seems to be commented out in /etc/cron.d/puppetcheck. Not running puppet."
          else
-            grep 'Puppet has been disabled' /etc/motd | sed -r "s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g"
+            error_print "$(cat /var/run/puppetctl.status)" "1;31"
          fi
-
-         exit 1
       fi
    fi
 }
@@ -361,8 +369,7 @@ status(){
          error_print "Puppet has not been disabled with puppetctl, but /etc/cron.d/puppetcheck seems to be missing"
       fi
    else
-      grep 'Puppet has been disabled' /etc/motd | sed -r "s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g"
-      exit 1
+      error_print "$(cat /var/run/puppetctl.status)" "1;31"
    fi
 }
 
@@ -413,7 +420,7 @@ usage() {
    echo "         status is queried with puppetctl."
    echo
    echo "   run"
-   echo "      No options"
+   echo "      Arguments are passed directly to the puppet agent command. Puppetctl itself has no options."
    echo
    echo "   status"
    echo "      No options"
