@@ -26,6 +26,10 @@
 # 08/19/2013  bhourigan   Updated 'puppetctl run' documentation to reflect that options are silently passed to 'puppet agent'
 # 09/04/2013  bhourigan   Second try at fixing ps output warning bug. There are two places where ps output is sanitized and falsely triggering a warning
 # 09/24/2013  bhourigan   The disable message is no longer recorded in /etc/motd, instead this has been relocated to a profile.d script. Cleaned up some code
+# 01/21/2014  rsoderberg  Fix date math for days and include hours [#962051]
+# 06/10/2014  bhourigan   Puppetctl status now reports last version applied
+# 01/12/2015  bhourigan   Changing path of puppetctl disable toggle from /var/run/puppetctl.status to /var/lib/puppetctl.status, rebooting RHEL hosts
+#                         had the unintended consequence of re-enabling puppet.
 
 DISABLE_EXPIRATION_TIME='now + 1 hour'
 PUPPET_AGENT_OPTIONS='--verbose --onetime --no-daemonize'
@@ -60,7 +64,7 @@ error_print(){
 }
 
 enable(){
-   rm -f /var/run/puppetctl.status
+   rm -f /var/lib/puppetctl.status
 
    if [ -f /var/lib/puppet/state/disabled.at ]; then
       if [ -f /var/lib/puppet/state/disabled.at.job ]; then
@@ -237,14 +241,14 @@ disable(){
       if [ ${force:-0} -eq 0 ]; then
          log_print "Puppet is already disabled (hint: $full_args -f; to override)"
          echo
-         error_print "$(cat /var/run/puppetctl.status)" "1;31"
+         error_print "$(cat /var/lib/puppetctl.status)" "1;31"
       else
          if [ -f /var/lib/puppet/state/disabled.at.job ]; then
             atrm $(cat /var/lib/puppet/state/disabled.at.job)
             rm -f /var/lib/puppet/state/disabled.at.job
          fi
 
-         rm -f /var/run/puppetctl.status
+         rm -f /var/lib/puppetctl.status
       fi
    fi
 
@@ -259,7 +263,7 @@ disable(){
    fi
 
    echo "logger -t \"puppetctl[$invoking_user]\" Puppet has been enabled on schedule" > /var/lib/puppet/state/disabled.at
-   echo "rm -f /var/lib/puppet/state/disabled.at /var/run/puppetctl.status" >> /var/lib/puppet/state/disabled.at
+   echo "rm -f /var/lib/puppet/state/disabled.at /var/lib/puppetctl.status" >> /var/lib/puppet/state/disabled.at
    if [ ! -s /var/lib/puppet/state/disabled.at ]; then
       enable
       error_print "Disk might be full. Can't write to /var/lib/puppet/state/disabled.at. Refusing to disable puppet." "1;31"
@@ -292,10 +296,10 @@ disable(){
       string="Puppet has been disabled by $invoking_user at $(date "+%Y-%m-%d %H:%M") until $real_time with the following message: $message"
    fi
 
-   echo "$string" > /var/run/puppetctl.status
-   if [ ! -s /var/run/puppetctl.status ]; then
+   echo "$string" > /var/lib/puppetctl.status
+   if [ ! -s /var/lib/puppetctl.status ]; then
       enable
-      error_print "Disk might be full. Can't write to /var/run/puppetctl.status. Refusing to disable puppet." "1;31"
+      error_print "Disk might be full. Can't write to /var/lib/puppetctl.status. Refusing to disable puppet." "1;31"
    fi
    log_print "$string" "1;31"
 }
@@ -333,7 +337,7 @@ run(){
          if [ $? -ne 0 ]; then
             error_print "Puppet has not been disabled with puppetctl, but it seems to be commented out in /etc/cron.d/puppetcheck. Not running puppet."
          else
-            error_print "$(cat /var/run/puppetctl.status)" "1;31"
+            error_print "$(cat /var/lib/puppetctl.status)" "1;31"
          fi
       fi
    fi
@@ -348,11 +352,39 @@ status(){
                if [ -f /var/lib/puppet/state/last_run_summary.yaml ]; then
                   age=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts Time.now.to_i - output['time']['last_run'].to_i" 2>/dev/null)
                   errors=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts output['resources']['failed']" 2>/dev/null)
+                  config=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts output['version']['config']" 2>/dev/null)
 
                   if [ -z "$age" ] || [ -z "$errors" ]; then
                      log_print "Puppet is enabled, but /var/lib/puppet/state/last_run_summary.yaml is incomplete (puppet is broken)"
                   else
-                     log_print "Puppet is enabled, last ran $(($age/3600))d $(($age%3600/60))m $(($age%60))s ago with $errors errors."
+                     if [[ "$age" -lt 1 ]]; then
+                        # Handle zero or negative $age gracefully.
+                        l_result="${age}s"
+                     else
+                        # Fancy logic to emit "4d 1m" instead of "4d 0h 1m 0s".
+                        declare -a last_ran
+                        l_days="$(($age/86400))"
+                        if [[ "$l_days" -ne 0 ]]; then
+                           last_ran+=("${l_days}d")
+                        fi
+                        l_hours="$(($age%86400/3600))"
+                        if [[ "$l_hours" -ne 0 ]]; then
+                           last_ran+=("${l_hours}h")
+                        fi
+                        l_minutes="$(($age%3600/60))"
+                        if [[ "$l_minutes" -ne 0 ]]; then
+                           last_ran+=("${l_minutes}m")
+                        fi
+                        l_seconds="$(($age%60))"
+                        if [[ "$l_seconds" -ne 0 ]]; then
+                           last_ran+=("${l_seconds}s")
+                        fi
+                        oldifs="$IFS"
+                        IFS=" "
+                        l_result="${last_ran[*]}"
+                        IFS="$oldifs"
+                     fi
+                     log_print "Puppet is enabled, last ran ${l_result} ago with $errors errors, applied version ${config}"
                   fi
                else
                   log_print "Puppet is enabled"
@@ -369,7 +401,7 @@ status(){
          error_print "Puppet has not been disabled with puppetctl, but /etc/cron.d/puppetcheck seems to be missing"
       fi
    else
-      error_print "$(cat /var/run/puppetctl.status)" "1;31"
+      error_print "$(cat /var/lib/puppetctl.status)" "1;31"
    fi
 }
 
