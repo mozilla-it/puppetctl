@@ -4,7 +4,8 @@
 #
 # Return codes:
 #  + 0, everything's fine
-#  + 1, something went wrong, look for WARNINGs or ERRORs
+#  + 1, errors exist, but they're not from this script (e.g. puppet itself had errors)
+#  + 2, something went wrong with the environment, look for WARNINGs or ERRORs
 #
 # Based on code by Marco Bonetti <marco.bonetti@slackware.it>
 #
@@ -31,14 +32,42 @@
 # 01/12/2015  bhourigan   Changing path of puppetctl disable toggle from /var/run/puppetctl.status to /var/lib/puppetctl.status, rebooting RHEL hosts
 #                         had the unintended consequence of re-enabling puppet.
 
+PATH=/opt/puppetlabs/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin
+
 DISABLE_EXPIRATION_TIME='now + 1 hour'
-PUPPET_AGENT_OPTIONS='--verbose --onetime --no-daemonize'
+PUPPET_AGENT_OPTIONS=(--verbose --onetime --no-daemonize)
+
+if ! command -v puppet > /dev/null 2>&1 ; then
+   error_print "Puppet has not been disabled with puppetctl, but I cannot find a puppet executable"
+fi
+
+#readonly STATEDIR=$(puppet config print statedir)
+# Running `puppet config print statedir` is the right way to find your
+# statedir.  However, this command alone adds 1.3s each time you invoke
+# puppetctl, which adds up to be a lot when you run puppetctl in a loop
+# over many hosts.  So we're going to cheat, until we hit a case where
+# we need to dynamically determine it.
+# You may also need to fix a lastrunfile variable down in status()
+readonly STATEDIR=/opt/puppetlabs/puppet/cache/state
+
+readonly AT_DISABLE_SCRIPT=${STATEDIR}/disabled.at
+readonly AT_DISABLE_JOBNUM=${STATEDIR}/disabled.at.job
+readonly AT_NOOPMODE_SCRIPT=${STATEDIR}/nooperate.at
+readonly AT_NOOPMODE_JOBNUM=${STATEDIR}/nooperate.at.job
+readonly PUPPETCTL_STATUS_FILE=/var/lib/puppetctl.status
+
+FORCE=0
+if [ -n "$SUDO_USER" ]; then
+   readonly INVOKING_USER="$SUDO_USER"
+else
+   readonly INVOKING_USER="$USER"
+fi
 
 log(){
-   if [ -z "$SUDO_USER" ]; then
-      logger -t "puppetctl" "$*"
-   else
+   if [ -n "$SUDO_USER" ]; then
       logger -t "puppetctl[$SUDO_USER]" "$*"
+   else
+      logger -t "puppetctl" "$*"
    fi
 }
 
@@ -46,8 +75,8 @@ log(){
 log_print(){
    log "$1"
 
-   if [ ! -z "$2" ] && [ -t 0 ]; then
-      echo -e "\033[${2}m${1}\033[0m"
+   if [ -n "$2" ] && [ -t 0 ]; then
+      echo -e "\\033[${2}m${1}\\033[0m"
    else
       if [ -t 0 ]; then
          echo "$1"
@@ -60,27 +89,75 @@ log_print(){
 # error_print "message" $color
 error_print(){
    log_print "$1" "$2"
-   exit 1
+   exit 2
+}
+
+is_enabled(){
+   if [ -f "$AT_DISABLE_SCRIPT" ]; then
+      return 1
+   fi
+   return 0
+}
+
+is_operating(){
+   if [ -f "$AT_NOOPMODE_SCRIPT" ]; then
+      return 1
+   fi
+   return 0
 }
 
 enable(){
-   rm -f /var/lib/puppetctl.status
-
-   if [ -f /var/lib/puppet/state/disabled.at ]; then
-      if [ -f /var/lib/puppet/state/disabled.at.job ]; then
-         atrm $(cat /var/lib/puppet/state/disabled.at.job)
-         rm -f /var/lib/puppet/state/disabled.at.job
+   # 'enable' takes you out of 'disabled' mode.
+   #
+   # If you are in noop mode, it does not change anything,
+   # as you are already enabled.
+   if ! is_enabled ; then
+      rm -f "$PUPPETCTL_STATUS_FILE"
+      if [ -f "$AT_DISABLE_JOBNUM" ]; then
+         atrm "$(cat "$AT_DISABLE_JOBNUM")"
+         rm -f "$AT_DISABLE_JOBNUM"
       fi
 
-      rm -f /var/lib/puppet/state/disabled.at
+      rm -f "$AT_DISABLE_SCRIPT"
       log_print "Puppet has been enabled"
+   elif ! is_operating ; then
+      log_print "Puppet is enabled, but is in nooperate mode (hint: 'puppetctl operate' to change this)"
    else
       log_print "Puppet is already enabled"
    fi
 }
 
-disable(){
-   full_args="puppetctl disable"
+operate(){
+   # 'operate' takes you out of 'nooperate' mode.
+   #
+   # If you are disabled mode, it does not change anything,
+   # as 'disable' outranks 'operate'
+
+   if ! is_enabled ; then
+      log_print "Puppet is disabled (hint: 'puppetctl enable' to change this)"
+   elif ! is_operating ; then
+      rm -f $PUPPETCTL_STATUS_FILE
+
+      if [ -f "$AT_NOOPMODE_JOBNUM" ]; then
+         atrm "$(cat "$AT_NOOPMODE_JOBNUM")"
+         rm -f "$AT_NOOPMODE_JOBNUM"
+      fi
+
+      rm -f "$AT_NOOPMODE_SCRIPT"
+      log_print "Puppet is back in 'operate' mode"
+   else
+      log_print "Puppet is already in 'operate' mode"
+   fi
+}
+
+parse_arguments_then_invoke_limiter_function(){
+   # This function is here to parse the rather complicated arguments
+   # allowed for setting up a disabled-for-a-time duration.
+
+   # As a final step, we will call $1 which is the disable function.
+   next_func=$1
+   shift 1
+   full_args="puppetctl ${next_func}"
 
    until [ -z "$1" ]; do
       case "$1" in
@@ -124,7 +201,7 @@ disable(){
             ;;
          -f|--force)
             full_args="$full_args $1"
-            force=1
+            FORCE=1
             shift 1
             ;;
          *)
@@ -140,8 +217,8 @@ disable(){
 
        if $keep_parsing; then
            # hh:mm is the easiest. The colon is mandatory.
-           #                           H  H       M  M
-           echo "$time" | grep -q '^[0-2][0-9]:[0-5][0-9]$'
+           #                        (HH              )   M    M
+           echo "$time" | grep -q '^(2[0-3]|[01][0-9]):[0-5][0-9]$'
            if [[ "${PIPESTATUS[1]}" == "0" ]]; then
                # No modification required! at(1) handles this okay.
                keep_parsing='false'
@@ -150,8 +227,8 @@ disable(){
 
        if $keep_parsing; then
            # YYYYMMDDhhmm is the easiest. Limited to 21st century.
-           #                        YY   Y  Y      M  M      D  D      H  H      M  M
-           echo "$time" | grep -q '^20[0-9][0-9][0-1][0-9][0-3][0-9][0-2][0-9][0-5][0-9]$'
+           #                        YY  Y    Y  (MM           )(DD                      )(HH              )  M    M
+           echo "$time" | grep -q '^20[0-9][0-9](0[1-9]|1[0-2])(0[1-9]|[1-2][0-9]|3[0-1])(2[0-3]|[01][0-9])[0-5][0-9]$'
            if [[ "${PIPESTATUS[1]}" == "0" ]]; then
                # No modification required! It's a valid POSIX timestamp.
                posix='-t'
@@ -161,8 +238,8 @@ disable(){
 
        if $keep_parsing; then
            # YYYYMMDD is the next easiest. We have to append hhmm 0000 to it.
-           #                        YY   Y  Y      M  M      D  D
-           echo "$time" | grep -q '^20[0-9][0-9][0-1][0-9][0-3][0-9]$'
+           #                        YY  Y    Y  (MM           )(DD                      )
+           echo "$time" | grep -q '^20[0-9][0-9](0[1-9]|1[0-2])(0[1-9]|[1-2][0-9]|3[0-1])$'
            if [[ "${PIPESTATUS[1]}" == "0" ]]; then
                # Modify it to be a valid POSIX timestamp, to prevent MMDDhhmm parsing.
                time="${time}0000"
@@ -179,7 +256,7 @@ disable(){
                duration="$(echo "$time" | cut -d'+' -f2 | rev | cut -c2- | rev)"
                if [[ "$duration" -le 0 ]]; then
                    echo "Invalid duration argument to -d, aborting."
-                   exit 1
+                   exit 2
                fi
                unit="$(echo "$time" | rev | cut -c1 | rev)"
                case "$unit" in
@@ -197,7 +274,7 @@ disable(){
                esac
                if [[ -z "$unit" ]]; then
                    echo "Invalid unit argument to -d, aborting."
-                   exit 1
+                   exit 2
                fi
                time="now + ${duration} ${unit}"
                keep_parsing='false'
@@ -207,217 +284,350 @@ disable(){
        if $keep_parsing; then
            # Nothing above parsed the date successfully.
            echo "Invalid argument to -d, aborting."
-           exit 1
+           exit 2
        fi
    fi
 
-   pid=$(ps auwwx | grep -i 'puppet agent\|puppetd ' | grep -v 'grep\|/bin/sh' | awk '{print $2}' | head -n 1)
-   if [ ${force:-0} -gt 0 ]; then
-      security=$(echo $pid | tr -d '[:digit:][:space:]')
-
-      if [ ! -z "$security" ]; then
-         error_print "WARNING: Extra characters detected in pid field from ps: \"$security\" (pid: $pid)"
-      fi
-
-      if [ ! -z "$pid" ]; then
-         echo -n "Puppet already running as pid $pid, killing with -TERM"
-         while kill -0 $pid 2>/dev/null; do
-            kill -TERM $pid 2>/dev/null
-            echo -n .
-            sleep 1
-         done
-         echo " killed."
-         log "Puppet already running as pid $pid, killed with -TERM"
-      fi
-   else
-      if [ ! -z "$pid" ]; then
-         log_print "notice: Run of Puppet configuration client already in progress; skipping (hint: $full_args -f; to kill the running process)" "0;36"
-         ps auwwx | grep -i 'puppet agent\|puppetd ' | grep -v 'grep\|/bin/sh'
-         exit 1
-      fi
-   fi
-
-   if [ -f /var/lib/puppet/state/disabled.at ]; then
-      if [ ${force:-0} -eq 0 ]; then
-         log_print "Puppet is already disabled (hint: $full_args -f; to override)"
-         echo
-         error_print "$(cat /var/lib/puppetctl.status)" "1;31"
-      else
-         if [ -f /var/lib/puppet/state/disabled.at.job ]; then
-            atrm $(cat /var/lib/puppet/state/disabled.at.job)
-            rm -f /var/lib/puppet/state/disabled.at.job
-         fi
-
-         rm -f /var/lib/puppetctl.status
-      fi
+   if [ -z "$posix" ]; then
+      posix=''
    fi
 
    if [ -z "$time" ]; then
       time="${DISABLE_EXPIRATION_TIME}"
    fi
 
-   if [ ! -z "$SUDO_USER" ]; then
-      invoking_user="$SUDO_USER"
-   else
-      invoking_user="$USER"
+   pid=$(pgrep -f 'puppet agent|puppetd ')
+   if [ -n "$pid" ]; then
+      if [ $FORCE -eq 0 ]; then
+         log_print "notice: Run of Puppet configuration client already in progress; skipping (hint: $full_args -f; to kill the running process)" "0;36"
+         pgrep -f 'puppet agent|puppetd ' -a
+         exit 2
+      else
+         echo -n "Puppet already running as pid $pid, killing with -TERM"
+         while kill -0 "$pid" 2>/dev/null; do
+            kill -TERM "$pid" 2>/dev/null
+            echo -n .
+            sleep 1
+         done
+         echo " killed."
+         log "Puppet already running as pid $pid, killed with -TERM"
+      fi
    fi
 
-   echo "logger -t \"puppetctl[$invoking_user]\" Puppet has been enabled on schedule" > /var/lib/puppet/state/disabled.at
-   echo "rm -f /var/lib/puppet/state/disabled.at /var/lib/puppetctl.status" >> /var/lib/puppet/state/disabled.at
-   if [ ! -s /var/lib/puppet/state/disabled.at ]; then
+   if ! is_enabled ; then
+      if [ $FORCE -eq 0 ]; then
+         log_print "Puppet is already disabled (hint: $full_args -f; to override)"
+         echo
+         error_print "$(cat $PUPPETCTL_STATUS_FILE)" "1;31"
+      fi
+   fi
+
+   case "$next_func" in
+      'disable')
+         disable "$time" "$posix" "$message"
+         ;;
+      'nooperate')
+         nooperate "$time" "$posix" "$message"
+         ;;
+      *)
+         error_print "Logic error in script, bad argument $1"
+         ;;
+   esac
+}
+
+disable(){
+   # The actual disabling function.  Intended to be called
+   # from parse_arguments_then_invoke_limiter_function, not directly.
+   time=$1
+   posix=$2
+   message=$3
+
+   if ! is_enabled ; then
+      if [ $FORCE -eq 0 ]; then
+         # Shouldn't get here; this should be intercepted during
+         # argument handling.  But, just in case...
+         log_print "Puppet is already disabled (Add -f to override)"
+         echo
+         error_print "$(cat $PUPPETCTL_STATUS_FILE)" "1;31"
+      else
+         if [ -f "$AT_DISABLE_JOBNUM" ]; then
+            atrm "$(cat "$AT_DISABLE_JOBNUM")"
+            rm -f "$AT_DISABLE_JOBNUM"
+         fi
+
+         rm -f $PUPPETCTL_STATUS_FILE
+      fi
+   fi
+
+   if ! is_operating ; then
+      # If we were in NOOP mode, disable is more important
+      # abort out of noop mode and go into lockdown.
+      if [ -f "$AT_NOOPMODE_JOBNUM" ]; then
+         atrm "$(cat "$AT_NOOPMODE_JOBNUM")"
+         rm -f "$AT_NOOPMODE_JOBNUM"
+      fi
+
+      rm -f "$AT_NOOPMODE_SCRIPT"
+      rm -f $PUPPETCTL_STATUS_FILE
+   fi
+
+   echo "logger -t \"puppetctl[$INVOKING_USER]\" Puppet has been enabled on schedule" > "$AT_DISABLE_SCRIPT"
+   echo "rm -f $AT_DISABLE_SCRIPT $PUPPETCTL_STATUS_FILE" >> "$AT_DISABLE_SCRIPT"
+   if [ ! -s "$AT_DISABLE_SCRIPT" ]; then
       enable
-      error_print "Disk might be full. Can't write to /var/lib/puppet/state/disabled.at. Refusing to disable puppet." "1;31"
+      error_print "Disk might be full. Can't write to $AT_DISABLE_SCRIPT. Refusing to disable puppet." "1;31"
    fi
 
-   output=$(at -f /var/lib/puppet/state/disabled.at ${posix:-} "$time" 2>&1)
+   output=$(at -f "$AT_DISABLE_SCRIPT" "$posix" "$time" 2>&1)
    status=$?
    if [ $status -ne 0 ]; then
       log_print "ERROR: at returned non-zero exit status $status"
-      echo
       echo "$output"
       enable
-      exit 1
+      exit 2
    else
+      # shellcheck disable=SC2001
+      # This sed is sufficiently complex
       job=$(echo "$output" | sed -e 's/job \([[:digit:]]*\) at.*/\1/g')
-      if [ ! -z "$job" ]; then
-         echo $job > /var/lib/puppet/state/disabled.at.job
+      if [ -n "$job" ]; then
+         echo "$job" > "$AT_DISABLE_JOBNUM"
 
-         if [ ! -s /var/lib/puppet/state/disabled.at.job ]; then
+         if [ ! -s "$AT_DISABLE_JOBNUM" ]; then
             enable
-            error_print "Disk might be full. Can't write to /var/lib/puppet/state/disabled.at.job. Refusing to disable puppet." "1;31"
+            error_print "Disk might be full. Can't write to $AT_DISABLE_JOBNUM. Refusing to disable puppet." "1;31"
          fi
       fi
    fi
 
    real_time=$(echo "$output" | sed '/^job.*at */!d; s///;q')
    if [ -z "$message" ]; then
-      string="Puppet has been disabled by $invoking_user at $(date "+%Y-%m-%d %H:%M") until $real_time"
+      string="Puppet has been disabled by $INVOKING_USER at $(date "+%Y-%m-%d %H:%M") until $real_time"
    else
-      string="Puppet has been disabled by $invoking_user at $(date "+%Y-%m-%d %H:%M") until $real_time with the following message: $message"
+      string="Puppet has been disabled by $INVOKING_USER at $(date "+%Y-%m-%d %H:%M") until $real_time with the following message: $message"
    fi
 
-   echo "$string" > /var/lib/puppetctl.status
-   if [ ! -s /var/lib/puppetctl.status ]; then
+   echo "$string" > $PUPPETCTL_STATUS_FILE
+   if [ ! -s $PUPPETCTL_STATUS_FILE ]; then
       enable
-      error_print "Disk might be full. Can't write to /var/lib/puppetctl.status. Refusing to disable puppet." "1;31"
+      error_print "Disk might be full. Can't write to $PUPPETCTL_STATUS_FILE. Refusing to disable puppet." "1;31"
    fi
    log_print "$string" "1;31"
 }
 
-run(){
-   if [ ! -f /var/lib/puppet/state/disabled.at ]; then
-      pid=$(ps auwwx | grep -i 'puppet agent' | grep -v 'grep\|/bin/sh' | awk '{print $2}')
-      security=$(echo $pid | tr -d '[:digit:][:space:]')
+nooperate(){
+   # The actual nooperate function.  Intended to be called
+   # from parse_arguments_then_invoke_limiter_function, not directly.
+   time=$1
+   posix=$2
+   message=$3
 
-      if [ ! -z "$security" ]; then
+   if ! is_enabled ; then
+      # A box that is disabled must remain disabled.
+      # Do not accept going into noop mode from a disabled state.
+      log_print "Puppet is disabled (You must be enabled to enter nooperate mode)"
+      error_print "$(cat $PUPPETCTL_STATUS_FILE)" "1;31"
+   fi
+
+   if ! is_operating ; then
+      if [ $FORCE -eq 0 ]; then
+         # Shouldn't get here; this should be intercepted during
+         # argument handling.  But, just in case...
+         log_print "Puppet is already in nooperate mode (Add -f to override)"
+         echo
+         error_print "$(cat $PUPPETCTL_STATUS_FILE)" "1;31"
+      else
+         if [ -f "$AT_NOOPMODE_JOBNUM" ]; then
+            atrm "$(cat "$AT_NOOPMODE_JOBNUM")"
+            rm -f "$AT_NOOPMODE_JOBNUM"
+         fi
+
+         rm -f $PUPPETCTL_STATUS_FILE
+      fi
+   fi
+
+   echo "logger -t \"puppetctl[$INVOKING_USER]\" Puppet has entered operate mode on schedule" > "$AT_NOOPMODE_SCRIPT"
+   echo "rm -f $AT_NOOPMODE_SCRIPT $PUPPETCTL_STATUS_FILE" >> "$AT_NOOPMODE_SCRIPT"
+   if [ ! -s "$AT_NOOPMODE_SCRIPT" ]; then
+      enable
+      error_print "Disk might be full. Can't write to $AT_NOOPMODE_SCRIPT. Refusing to nooperate puppet." "1;31"
+   fi
+
+   output=$(at -f "$AT_NOOPMODE_SCRIPT" "$posix" "$time" 2>&1)
+   status=$?
+   if [ $status -ne 0 ]; then
+      log_print "ERROR: at returned non-zero exit status $status"
+      echo "$output"
+      enable
+      exit 2
+   else
+      # shellcheck disable=SC2001
+      # This sed is sufficiently complex
+      job=$(echo "$output" | sed -e 's/job \([[:digit:]]*\) at.*/\1/g')
+      if [ -n "$job" ]; then
+         echo "$job" > "$AT_NOOPMODE_JOBNUM"
+
+         if [ ! -s "$AT_NOOPMODE_JOBNUM" ]; then
+            enable
+            error_print "Disk might be full. Can't write to $AT_NOOPMODE_JOBNUM. Refusing to nooperate puppet." "1;31"
+         fi
+      fi
+   fi
+
+   real_time=$(echo "$output" | sed '/^job.*at */!d; s///;q')
+   if [ -z "$message" ]; then
+      string="Puppet is in nooperate mode by $INVOKING_USER at $(date "+%Y-%m-%d %H:%M") until $real_time"
+   else
+      string="Puppet is in nooperate mode by $INVOKING_USER at $(date "+%Y-%m-%d %H:%M") until $real_time with the following message: $message"
+   fi
+
+   echo "$string" > $PUPPETCTL_STATUS_FILE
+   if [ ! -s $PUPPETCTL_STATUS_FILE ]; then
+      enable
+      error_print "Disk might be full. Can't write to $PUPPETCTL_STATUS_FILE. Refusing to nooperate puppet." "1;31"
+   fi
+   log_print "$string" "1;31"
+
+}
+
+run(){
+   if ! is_enabled ; then
+      if [ -t 0 ]; then
+         if grep -v '^[ 	]*#' /etc/cron.d/puppetcheck | grep -q 'puppet agent\|puppetctl'; then
+            error_print "$(cat $PUPPETCTL_STATUS_FILE)" "1;31"
+         else
+            error_print "Puppet has not been disabled with puppetctl, but it seems to be commented out in /etc/cron.d/puppetcheck. Not running puppet."
+         fi
+      fi
+   else
+      pid=$(pgrep -f 'puppet agent')
+      security=$(echo "$pid" | tr -d '[:digit:][:space:]')
+
+      if [ -n "$security" ]; then
          error_print "WARNING: Extra characters detected in pid field from ps: \"$security\" (pid: $pid)"
       fi
 
-      if [ ! -z "$pid" ]; then
-         age=$(stat -c '%Y' /proc/$pid)
+      if [ -n "$pid" ]; then
+         age=$(stat -c '%Y' /proc/"$pid")
          current=$(date "+%s")
-         delta=$(expr $current - $age)
+         delta=$((current - age))
 
-         if [ ! -z "$delta" ] && [ "$delta" -gt 3600 ]; then
+         if [ -n "$delta" ] && [ "$delta" -gt 3600 ]; then
             log_print "Killed hung puppet process, had been running for $delta seconds"
-            kill -9 $pid
+            kill -9 "$pid"
          fi
+      fi
+
+      if ! is_operating ; then
+         PUPPET_AGENT_OPTIONS+=(--noop)
+      fi
+
+      if [ -t 0 ] || [ -z "$MAILTO" ]; then
+         PUPPET_AGENT_OPTIONS+=(--no-splay)
       fi
 
       puppet agent --enable >/dev/null 2>&1
-      if [ -t 0 ] || [ -z "$MAILTO" ]; then
-         puppet agent $PUPPET_AGENT_OPTIONS --no-splay $@
-      else
-	 puppet agent $PUPPET_AGENT_OPTIONS $@
-      fi
-   else
-      if [ -t 0 ]; then
-         grep -v '^[ 	]*#' /etc/cron.d/puppetcheck | grep -q 'puppet agent\|puppetctl'
-
-         if [ $? -ne 0 ]; then
-            error_print "Puppet has not been disabled with puppetctl, but it seems to be commented out in /etc/cron.d/puppetcheck. Not running puppet."
-         else
-            error_print "$(cat /var/lib/puppetctl.status)" "1;31"
-         fi
-      fi
+      puppet agent "${PUPPET_AGENT_OPTIONS[@]}" "$@"
    fi
 }
 
 status(){
-   if [ ! -f /var/lib/puppet/state/disabled.at ]; then
-      if [ -f /etc/cron.d/puppetcheck ]; then
-         grep -v '^[ 	]*#' /etc/cron.d/puppetcheck | grep -q 'puppet agent\|puppetctl'
-         if [ $? -eq 0 ]; then
-            if [ -x /usr/bin/puppet ]; then
-               if [ -f /var/lib/puppet/state/last_run_summary.yaml ]; then
-                  age=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts Time.now.to_i - output['time']['last_run'].to_i" 2>/dev/null)
-                  errors=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts output['resources']['failed']" 2>/dev/null)
-                  config=$(ruby -ryaml -e "output = File.open('/var/lib/puppet/state/last_run_summary.yaml'){ |data| YAML::load(data) }; puts output['version']['config']" 2>/dev/null)
 
-                  if [ -z "$age" ] || [ -z "$errors" ]; then
-                     log_print "Puppet is enabled, but /var/lib/puppet/state/last_run_summary.yaml is incomplete (puppet is broken)"
-                  else
-                     if [[ "$age" -lt 1 ]]; then
-                        # Handle zero or negative $age gracefully.
-                        l_result="${age}s"
-                     else
-                        # Fancy logic to emit "4d 1m" instead of "4d 0h 1m 0s".
-                        declare -a last_ran
-                        l_days="$(($age/86400))"
-                        if [[ "$l_days" -ne 0 ]]; then
-                           last_ran+=("${l_days}d")
-                        fi
-                        l_hours="$(($age%86400/3600))"
-                        if [[ "$l_hours" -ne 0 ]]; then
-                           last_ran+=("${l_hours}h")
-                        fi
-                        l_minutes="$(($age%3600/60))"
-                        if [[ "$l_minutes" -ne 0 ]]; then
-                           last_ran+=("${l_minutes}m")
-                        fi
-                        l_seconds="$(($age%60))"
-                        if [[ "$l_seconds" -ne 0 ]]; then
-                           last_ran+=("${l_seconds}s")
-                        fi
-                        oldifs="$IFS"
-                        IFS=" "
-                        l_result="${last_ran[*]}"
-                        IFS="$oldifs"
-                     fi
-                     log_print "Puppet is enabled, last ran ${l_result} ago with $errors errors, applied version ${config}"
-                  fi
-               else
-                  log_print "Puppet is enabled"
-               fi
-
-               exit 0
-            else
-               error_print "Puppet has not been disabled with puppetctl, but it seems /usr/bin/puppet is not set to be executable"
-            fi
-         else
-            error_print "Puppet has not been disabled with puppetctl, but puppet seems to be commented out in /etc/cron.d/puppetcheck"
-         fi
-      else
-         error_print "Puppet has not been disabled with puppetctl, but /etc/cron.d/puppetcheck seems to be missing"
-      fi
+   if is_operating ; then
+      enabled_comment='Puppet is enabled'
    else
-      error_print "$(cat /var/lib/puppetctl.status)" "1;31"
+      enabled_comment='Puppet is enabled, but in nooperate mode'
    fi
+
+   #lastrunfile=$(puppet config print lastrunfile)   # last_run_summary.yaml
+   # Running `puppet config print lastrunfile` is the right way to find your
+   # statedir.  However, this command alone adds 1.3s each time you invoke
+   # puppetctl status.  This doesn't really happen often in a tight loop but
+   # it is used by nagios.  So we're going to cheat, until we hit a case where
+   # we need to dynamically determine it.
+   lastrunfile=/opt/puppetlabs/puppet/cache/state/last_run_summary.yaml   # last_run_summary.yaml
+
+   # First off: gather some information for the majority use case:
+   if [ ! -f "$lastrunfile" ]; then
+      log_print "${enabled_comment}.  There is no last_run_summary.yaml information"
+      exit 2
+   else
+      {
+         PATH=/opt/puppetlabs/puppet/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin
+         # We add /opt/puppetlabs/puppet/bin because we want access to
+         # the ruby binary (for parsing the last-run yaml)
+         age=$(lastrunfile=$lastrunfile ruby -ryaml -e "output = File.open(ENV['lastrunfile']){ |data| YAML::load(data) }; puts Time.now.to_i - output['time']['last_run'].to_i" 2>/dev/null)
+         errors=$(lastrunfile=$lastrunfile ruby -ryaml -e "output = File.open(ENV['lastrunfile']){ |data| YAML::load(data) }; puts output['resources']['failed']" 2>/dev/null)
+         config=$(lastrunfile=$lastrunfile ruby -ryaml -e "output = File.open(ENV['lastrunfile']){ |data| YAML::load(data) }; puts output['version']['config']" 2>/dev/null)
+      }
+
+      if [ -n "$age" ] && [ -n "$errors" ]; then
+         if [[ "$age" -lt 1 ]]; then
+            # Handle zero or negative $age gracefully.
+            l_result="${age}s"
+         else
+            # Fancy logic to emit "4d 1m" instead of "4d 0h 1m 0s".
+            declare -a last_ran
+            l_days="$((age/86400))"
+            if [[ "$l_days" -ne 0 ]]; then
+               last_ran+=("${l_days}d")
+            fi
+            l_hours="$((age%86400/3600))"
+            if [[ "$l_hours" -ne 0 ]]; then
+               last_ran+=("${l_hours}h")
+            fi
+            l_minutes="$((age%3600/60))"
+            if [[ "$l_minutes" -ne 0 ]]; then
+               last_ran+=("${l_minutes}m")
+            fi
+            l_seconds="$((age%60))"
+            if [[ "$l_seconds" -ne 0 ]]; then
+               last_ran+=("${l_seconds}s")
+            fi
+            oldifs="$IFS"
+            IFS=" "
+            l_result="${last_ran[*]}"
+            IFS="$oldifs"
+         fi
+      fi
+      # At this point, l_result is set
+   fi
+
+   if ! is_enabled ; then
+      log_print "Puppet last ran ${l_result} ago with $errors errors, applied version ${config}"
+      error_print "$(cat $PUPPETCTL_STATUS_FILE)" "1;31"
+   fi
+
+   if [ ! -f /etc/cron.d/puppetcheck ]; then
+      error_print "Puppet has not been disabled with puppetctl, but /etc/cron.d/puppetcheck seems to be missing"
+   fi
+
+   if ! grep -v '^[ 	]*#' /etc/cron.d/puppetcheck | grep -q 'puppet agent\|puppetctl'; then
+      error_print "Puppet has not been disabled with puppetctl, but puppet seems to be commented out in /etc/cron.d/puppetcheck"
+   fi
+
+   # At this point, we're out of gross puppetctl error states, and we can declare that
+   # puppet is enabled.  It may be busted, but it's not OUR fault.
+
+   log_print "${enabled_comment}, last ran ${l_result} ago with $errors errors, applied version ${config}"
+   # exit 0 if there are no errors, exit 1 if there were errors:
+   exitcode=$((errors && 1))
+   exit $exitcode
+
 }
 
 usage() {
-   if [ $# -gt 0 ]; then
-      echo "ERROR: $*"
-      echo
-   fi
    echo -e "Usage: $0 <command> [<options>]"
    echo
    echo "Commands:"
    echo "---------"
+   echo "   is-enabled   True if puppet is enabled"
+   echo "   is-operating True if puppet is in normal (not noop) mode"
    echo "   enable       Enable puppet"
    echo "   disable      Disable puppet"
+   echo "   operate      Have puppet operate in normal mode"
+   echo "   nooperate    Have puppet operate in noop mode"
    echo "   run          Puppet agent run"
-   echo "   status       Show puppet status"
+   echo "   status       Status of the latest run"
    echo
    echo "Options:"
    echo "--------"
@@ -451,6 +661,12 @@ usage() {
    echo "         Set a message that will be displayed in /etc/motd and any time the"
    echo "         status is queried with puppetctl."
    echo
+   echo "   operate"
+   echo "      No options"
+   echo
+   echo "   nooperate"
+   echo "      Same options as disable"
+   echo
    echo "   run"
    echo "      Arguments are passed directly to the puppet agent command. Puppetctl itself has no options."
    echo
@@ -465,24 +681,51 @@ usage() {
    echo "# puppetctl run --noop"
    echo
    echo "Want more examples? File a bug!"
-   exit 1
+   exit 2
 }
 
 # check root
 if [ ! "${EUID}" = "0" ]; then
    echo "You need root privileges to run $0"
-   exit 1
+   exit 2
 fi
 
 log "Running with: $*"
 
 case "$1" in
+   'is-enabled')
+      if is_enabled ; then
+         echo 'enabled'
+         exit 0
+      else
+         echo 'disabled'
+         exit 1
+      fi
+      ;;
+   'is-operating')
+      if is_operating ; then
+         echo 'operating'
+         exit 0
+      else
+         echo 'nooperating'
+         exit 1
+      fi
+      ;;
    'enable')
       enable
       ;;
+   'operate')
+      operate
+      ;;
    'disable')
-      shift 1
-      disable "$@"
+      # Note here that we're passing "$@" without doing "shift 1"
+      # 'disable' is still the first argument.
+      parse_arguments_then_invoke_limiter_function "$@"
+      ;;
+   'nooperate')
+      # Note here that we're passing "$@" without doing "shift 1"
+      # 'nooperate' is still the first argument.
+      parse_arguments_then_invoke_limiter_function "$@"
       ;;
    'run')
       shift 1
