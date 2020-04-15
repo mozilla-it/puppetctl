@@ -417,7 +417,7 @@ usage() {
    echo "   enable       Enable puppet"
    echo "   disable      Disable puppet"
    echo "   run          Puppet agent run"
-   echo "   status       Enable puppet"
+   echo "   status       Show puppet status"
    echo
    echo "Options:"
    echo "--------"
