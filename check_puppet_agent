@@ -21,7 +21,6 @@ puppetversion=$(puppet -V)
 statedir=$(puppet config print statedir)
 statefile=${statedir}/last_run_summary.yaml
 reportfile=${statedir}/last_run_report.yaml
-disablefile=${statedir}/disabled.at
 
 usage(){
    if [ $# -gt 0 ]; then
@@ -29,7 +28,7 @@ usage(){
       echo
    fi
 
-   echo -e "Usage: $0 [-c] [-t <threshold>] [-s <statefile>] [-r <reportfile>] [-d <disablefile>]"
+   echo -e "Usage: $0 [-c] [-t <threshold>] [-s <statefile>] [-r <reportfile>]"
    echo
    echo -e "\t-w last run alert threshold"
    echo -e "\t-c check for catalog compilation failures only"
@@ -63,7 +62,8 @@ check_catalog_version(){
 }
 
 check_last_run_time(){
-   if [ ! -f "$disablefile" ]; then
+   is_enabled=$(puppetctl is-enabled)
+   if $is_enabled; then
       # Parse last_last run from statefile
       last_run_time=$(awk '/\s*last_run:/ {print $2}' "$statefile")
       if [ "${last_run_time:-0}" -eq 0 ]; then
@@ -76,14 +76,10 @@ check_last_run_time(){
          result "Last run was ${time_since_last} seconds ago" 3
       fi
    else
-      comment=$(grep 'Puppet has been disabled' /var/lib/puppetctl.status | sed -r "s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g")
-      if [ -n "$comment" ]; then
-         # we return 0 because, if someone has actively disabled puppet,
-         # a human has control and thus it's not an alert.
-         result "${comment}" 0
-      else
-         result "Puppet appears disabled but has no valid comment as to why." 3
-      fi
+      comment=$(puppetctl lock-status | grep disabled)
+      # we return 0 because, if someone has actively disabled puppet,
+      # a human has control and thus it's not an alert.
+      result "${comment}" 0
    fi
 }
 
@@ -141,16 +137,13 @@ result_ok(){
    result "Puppet agent ${puppetversion} running catalog ${configuration_version:-UNKNOWN}" 0
 }
 
-while getopts "t:s:d:r:c" opt; do
+while getopts "t:s:r:c" opt; do
    case $opt in
       t)
          threshold=$OPTARG
          ;;
       s)
          statefile=$OPTARG
-         ;;
-      d)
-         disablefile=$OPTARG
          ;;
       r)
          reportfile=$OPTARG
