@@ -1,0 +1,33 @@
+# This file is optional.  When placed at /etc/puppetctl.conf it will be
+# brought in and modify the default locations of files with puppetctl
+
+# Variables related to puppet:
+[puppet]
+# These variables are unneeded for most people, as puppet 4-6 have all used
+# these locations.
+
+# puppet_bin_path is a colon-separated PATH variable of where to find puppet
+# and the ruby instance that ships with puppet.  This is used for parsing the
+# lastrunfile and executing puppet.
+puppet_bin_path = /opt/puppetlabs/puppet/bin
+# Side note, we automatically add /bin and /usr/bin as an assistance measure
+# because puppet gets sad without them.  You don't need to add them here.
+
+# For the following two variables, rather than expensively invoke puppet
+# to read its config every time, we leave the filenames here.  Override
+# if you need to set a different location.
+
+# lastrunfile is the result of 'puppet config print lastrunfile'.
+# It's the file we look at to report on puppet status.
+lastrunfile = /opt/puppetlabs/puppet/cache/state/last_run_summary.yaml
+
+# agent_catalog_run_lockfile is the result of 'puppet config print agent_catalog_run_lockfile'
+# It's the lock file that tells us puppet is currently running.
+agent_catalog_run_lockfile = /opt/puppetlabs/puppet/cache/state/agent_catalog_run.lock
+
+
+# Variables related to puppetctl:
+[puppetctl]
+# The location of the file that keeps puppetctl's state.  This needs cross-
+# reboot survivability (so not /tmp or the like).
+state_file = /var/lib/puppetctl.status
