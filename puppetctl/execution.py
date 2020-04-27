@@ -126,7 +126,8 @@ class PuppetctlExecution(object):
         p_enable.wait()
         # Time to run puppet for real.  exec so we relenquish control:
         passed_args = ['puppet', 'agent'] + puppet_agent_options
-        os.execvpe('puppet', passed_args, env={'PATH': self.puppet_bin_path})
+        os.environ['PATH'] = self.puppet_bin_path
+        os.execvpe('puppet', passed_args, env=os.environ)
 
     def enable(self):
         '''

@@ -50,18 +50,22 @@ class TestExecutionRun(unittest.TestCase):
         ''' Test that "run" fires when there are no locks. '''
         with mock.patch('os.execvpe') as mock_exec:
             self.library.run([])
+        my_env = os.environ
+        my_env['PATH'] = self.library.puppet_bin_path
         mock_exec.assert_called_once_with('puppet', ['puppet', 'agent', '--verbose', '--onetime',
                                                      '--no-daemonize', '--no-splay'],
-                                          env={'PATH': self.library.puppet_bin_path})
+                                          env=my_env)
 
     def test_run_nolocks_with_args(self):
         ''' Test that "run" passes args along. '''
         with mock.patch('os.execvpe') as mock_exec:
             self.library.run(['--nonsense1', '--shenanigans2'])
+        my_env = os.environ
+        my_env['PATH'] = self.library.puppet_bin_path
         mock_exec.assert_called_once_with('puppet', ['puppet', 'agent', '--verbose', '--onetime',
                                                      '--no-daemonize', '--no-splay',
                                                      '--nonsense1', '--shenanigans2'],
-                                          env={'PATH': self.library.puppet_bin_path})
+                                          env=my_env)
 
     def test_run_not_our_locks(self):
         ''' Test that "run" does nothing when we have no locks, but others do. '''
@@ -118,6 +122,8 @@ class TestExecutionRun(unittest.TestCase):
                                                    now+30*60, 'It is my lock')
         with mock.patch('os.execvpe') as mock_exec:
             self.library.run([])
+        my_env = os.environ
+        my_env['PATH'] = self.library.puppet_bin_path
         mock_exec.assert_called_once_with('puppet', ['puppet', 'agent', '--verbose', '--onetime',
                                                      '--no-daemonize', '--no-splay', '--noop'],
-                                          env={'PATH': self.library.puppet_bin_path})
+                                          env=my_env)
