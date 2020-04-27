@@ -50,6 +50,10 @@ setup(
     author_email='gcox@mozilla.com',
     description=('Tool for setting time-bound disable and nooperate modes on a puppeted host\n' +
                  'This package is built upon commit ' + git_version()),
+    install_requires=[
+        'setuptools',
+        'six',
+    ],
     license='MPL',
     entry_points={
         'console_scripts': ['puppetctl=puppetctl.command_line:main'],
