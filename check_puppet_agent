@@ -62,8 +62,7 @@ check_catalog_version(){
 }
 
 check_last_run_time(){
-   is_enabled=$(puppetctl is-enabled)
-   if $is_enabled; then
+   if puppetctl is-enabled >/dev/null ; then
       # Parse last_last run from statefile
       last_run_time=$(awk '/\s*last_run:/ {print $2}' "$statefile")
       if [ "${last_run_time:-0}" -eq 0 ]; then
@@ -173,7 +172,7 @@ fi
 # immediately, and run time errors daily), so this script will operate
 # in two modes which will be defined with two different notification
 # intervals in Nagios
-configuration_version=$(grep configuration_version "$reportfile" | cut -d ':' -f 2)
+configuration_version=$(grep ^configuration_version: "$reportfile" | cut -d ':' -f 2)
 
 if [ "${check_catalog:-0}" -eq 1 ]; then
    if [ "${threshold:-0}" -gt 1 ]; then
