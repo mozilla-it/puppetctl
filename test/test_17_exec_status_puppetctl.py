@@ -109,7 +109,7 @@ class TestExecutionStatusPuppetctl(unittest.TestCase):
                 mock.patch('sys.stdout', new=StringIO()) as fake_out, \
                 mock.patch.object(PuppetctlExecution, '_status_of_puppetctl',
                                   return_value={'message': 'foo', 'color': None,
-                                                'disable': 0, 'nooperate':0}) as mock_pc:
+                                                'disable': 0, 'nooperate': 0}) as mock_pc:
             self.library.motd_status()
         mock_pc.assert_called_once()
         self.assertEqual('', fake_out.getvalue())
@@ -120,7 +120,7 @@ class TestExecutionStatusPuppetctl(unittest.TestCase):
                 mock.patch('sys.stdout', new=StringIO()) as fake_out, \
                 mock.patch.object(PuppetctlExecution, '_status_of_puppetctl',
                                   return_value={'message': 'foo', 'color': '1;31',
-                                                'disable': 1, 'nooperate':0}) as mock_pc:
+                                                'disable': 1, 'nooperate': 0}) as mock_pc:
             self.library.motd_status()
         mock_pc.assert_called_once()
         self.assertIn('foo', fake_out.getvalue())
