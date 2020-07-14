@@ -20,6 +20,8 @@ class PuppetctlCLIHandler(object):
     actual work.
     '''
 
+    default_disable_time_length = '1 hour'
+
     def __init__(self):
         ''' Spin up our executing object '''
         # Creates an object with defaults.  It's possible we'll stomp on this in main after we
@@ -58,7 +60,7 @@ class PuppetctlCLIHandler(object):
         # We create our own description and usage here, because the dual parsers below will each
         # have an incomplete picture of the desired behavior for the user.
         usage = '%(prog)s [--config conffile] command'
-        description = textwrap.dedent('''\
+        description_template = textwrap.dedent('''\
             Routine commands, anyone may run:
                is-enabled       True if puppet is enabled
                is-operating     True if puppet is in normal (not noop) mode
@@ -73,7 +75,9 @@ class PuppetctlCLIHandler(object):
                run              Puppet agent run
             Emergency commands, requires root:
                break-all-locks  Removes all locks, even ones that do not belong to you
-               panic-stop       Kills any active puppet run, disables puppet for one hour''')
+               panic-stop       Kills any active puppet run, disables puppet for {disable_time}''')
+        description = description_template.format(
+            disable_time=self.__class__.default_disable_time_length)
 
         # Create a parser whose only job is to grab --config:
         conf_only_parser = argparse.ArgumentParser(
@@ -144,8 +148,7 @@ class PuppetctlCLIHandler(object):
             print('nooperating')
             sys.exit(1)
 
-    @staticmethod
-    def _uniform_time_parser(parser):
+    def _uniform_time_parser(self, parser):
         '''
             This is the time parser used by disable and nooperate.
             It is very basic and may need expanding depending on user feedback.
@@ -160,7 +163,8 @@ class PuppetctlCLIHandler(object):
         at_time_string = getattr(parser, 'time', None)
         date_time_string = getattr(parser, 'date', None)
         if not at_time_string and not date_time_string:
-            at_time_string = 'now + 1 hour'
+            at_time_string = 'now + {default_disable_time_length}'.format(
+                default_disable_time_length=self.__class__.default_disable_time_length)
         if at_time_string:
             # this used to be the place where we would just lightly massage
             # the datestrings and pass them to 'at'.  Since we have removed
