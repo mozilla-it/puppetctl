@@ -148,7 +148,18 @@ class PuppetctlExecution(object):
             self.color_print(('Puppet is enabled, but is in nooperate mode.  '
                               "(hint: 'puppetctl operate' to change this)"))
         else:
-            self.color_print("Puppet is already enabled.")
+            others_disables = self.statefile_object.get_disable_lock_ids()
+            others_noops = self.statefile_object.get_noop_lock_ids()
+            if others_disables:
+                self.color_print(("Puppet is already enabled for you, "
+                                  "but other users have puppet disabled."))
+                self.lock_status()
+            elif others_noops:
+                self.color_print(("Puppet is already enabled for you, "
+                                  "but other users have puppet in noop mode."))
+                self.lock_status()
+            else:
+                self.color_print("Puppet is already enabled.")
 
     def disable(self, force, expiry, message):
         '''
@@ -215,7 +226,19 @@ class PuppetctlExecution(object):
                                   'before adding new one.'), '1;31')
             self.log_print("Puppet is back in 'operate' mode.")
         else:
-            self.color_print("Puppet is already in 'operate' mode.")
+            others_disables = self.statefile_object.get_disable_lock_ids()
+            others_noops = self.statefile_object.get_noop_lock_ids()
+            if others_disables:
+                self.color_print(("Puppet is already in 'operate' mode for you, "
+                                  "but other users have puppet disabled."))
+                self.lock_status()
+            elif others_noops:
+                self.color_print(("Puppet is already in 'operate' mode for you, "
+                                  "but other users have puppet in noop mode."))
+                self.lock_status()
+            else:
+                self.color_print("Puppet is already in 'operate' mode.")
+
 
     def nooperate(self, force, expiry, message):
         '''

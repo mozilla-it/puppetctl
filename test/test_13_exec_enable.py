@@ -56,14 +56,28 @@ class TestExecutionEnable(unittest.TestCase):
             self.library.enable()
         self.assertIn('Puppet is already enabled.', fake_out.getvalue())
 
-    def test_enable_not_our_locks(self):
-        ''' Test that "enable" does nothing when we have no locks, but others do. '''
+    def test_enable_not_our_locks_1(self):
+        ''' Test that "enable" does nothing when we have no locks, but others disable. '''
         now = int(time.time())
         self.library.statefile_object.add_lock('somebody2', 'disable', now+30*60, 'I disabled 1h')
         self.library.statefile_object.add_lock('somebody3', 'nooperate', now+90*60, 'I nooped 2h')
         with mock.patch('sys.stdout', new=StringIO()) as fake_out:
-            self.library.enable()
-        self.assertIn('Puppet is already enabled.', fake_out.getvalue())
+            with mock.patch.object(PuppetctlExecution, 'lock_status') as mock_status:
+                self.library.enable()
+        self.assertIn(('Puppet is already enabled for you, '
+                       'but other users have puppet disabled.'), fake_out.getvalue())
+        mock_status.assert_called_once_with()
+
+    def test_enable_not_our_locks_2(self):
+        ''' Test that "enable" does nothing when we have no locks, but others noop. '''
+        now = int(time.time())
+        self.library.statefile_object.add_lock('somebody3', 'nooperate', now+90*60, 'I nooped 2h')
+        with mock.patch('sys.stdout', new=StringIO()) as fake_out:
+            with mock.patch.object(PuppetctlExecution, 'lock_status') as mock_status:
+                self.library.enable()
+        self.assertIn(('Puppet is already enabled for you, '
+                       'but other users have puppet in noop mode.'), fake_out.getvalue())
+        mock_status.assert_called_once_with()
 
     def test_enable_disable_mylock(self):
         ''' Test that "enable" wants to enable when it's my lock. '''
