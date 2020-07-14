@@ -151,12 +151,12 @@ class PuppetctlExecution(object):
             others_disables = self.statefile_object.get_disable_lock_ids()
             others_noops = self.statefile_object.get_noop_lock_ids()
             if others_disables:
-                self.color_print(("Puppet is already enabled for you, "
-                                  "but other users have puppet disabled."))
+                self.color_print(("Puppet is already enabled for {you}, but other users have "
+                                  "puppet disabled.").format(you=self.invoking_user))
                 self.lock_status()
             elif others_noops:
-                self.color_print(("Puppet is already enabled for you, "
-                                  "but other users have puppet in noop mode."))
+                self.color_print(("Puppet is already enabled for {you}, but other users have "
+                                  "puppet in noop mode.").format(you=self.invoking_user))
                 self.lock_status()
             else:
                 self.color_print("Puppet is already enabled.")
@@ -229,12 +229,12 @@ class PuppetctlExecution(object):
             others_disables = self.statefile_object.get_disable_lock_ids()
             others_noops = self.statefile_object.get_noop_lock_ids()
             if others_disables:
-                self.color_print(("Puppet is already in 'operate' mode for you, "
-                                  "but other users have puppet disabled."))
+                self.color_print(("Puppet is already in 'operate' mode for {you}, but other users "
+                                  "have puppet disabled.").format(you=self.invoking_user))
                 self.lock_status()
             elif others_noops:
-                self.color_print(("Puppet is already in 'operate' mode for you, "
-                                  "but other users have puppet in noop mode."))
+                self.color_print(("Puppet is already in 'operate' mode for {you}, but other users "
+                                  "have puppet in noop mode.").format(you=self.invoking_user))
                 self.lock_status()
             else:
                 self.color_print("Puppet is already in 'operate' mode.")

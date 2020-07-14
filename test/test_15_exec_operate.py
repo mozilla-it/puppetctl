@@ -64,8 +64,8 @@ class TestExecutionOperate(unittest.TestCase):
         with mock.patch('sys.stdout', new=StringIO()) as fake_out:
             with mock.patch.object(PuppetctlExecution, 'lock_status') as mock_status:
                 self.library.operate()
-        self.assertIn(("Puppet is already in 'operate' mode for you, "
-                       "but other users have puppet disabled."), fake_out.getvalue())
+        self.assertIn("Puppet is already in 'operate' mode for ", fake_out.getvalue())
+        self.assertIn(", but other users have puppet disabled.", fake_out.getvalue())
         mock_status.assert_called_once_with()
 
     def test_operate_not_our_locks_2(self):
@@ -75,8 +75,8 @@ class TestExecutionOperate(unittest.TestCase):
         with mock.patch('sys.stdout', new=StringIO()) as fake_out:
             with mock.patch.object(PuppetctlExecution, 'lock_status') as mock_status:
                 self.library.operate()
-        self.assertIn(("Puppet is already in 'operate' mode for you, "
-                       "but other users have puppet in noop mode."), fake_out.getvalue())
+        self.assertIn("Puppet is already in 'operate' mode for ", fake_out.getvalue())
+        self.assertIn(", but other users have puppet in noop mode.", fake_out.getvalue())
         mock_status.assert_called_once_with()
 
     def test_operate_disable_mylock(self):

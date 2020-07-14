@@ -64,8 +64,8 @@ class TestExecutionEnable(unittest.TestCase):
         with mock.patch('sys.stdout', new=StringIO()) as fake_out:
             with mock.patch.object(PuppetctlExecution, 'lock_status') as mock_status:
                 self.library.enable()
-        self.assertIn(('Puppet is already enabled for you, '
-                       'but other users have puppet disabled.'), fake_out.getvalue())
+        self.assertIn('Puppet is already enabled for ', fake_out.getvalue())
+        self.assertIn(', but other users have puppet disabled.', fake_out.getvalue())
         mock_status.assert_called_once_with()
 
     def test_enable_not_our_locks_2(self):
@@ -75,8 +75,8 @@ class TestExecutionEnable(unittest.TestCase):
         with mock.patch('sys.stdout', new=StringIO()) as fake_out:
             with mock.patch.object(PuppetctlExecution, 'lock_status') as mock_status:
                 self.library.enable()
-        self.assertIn(('Puppet is already enabled for you, '
-                       'but other users have puppet in noop mode.'), fake_out.getvalue())
+        self.assertIn('Puppet is already enabled for ', fake_out.getvalue())
+        self.assertIn(', but other users have puppet in noop mode.', fake_out.getvalue())
         mock_status.assert_called_once_with()
 
     def test_enable_disable_mylock(self):
