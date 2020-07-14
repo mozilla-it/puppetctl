@@ -47,6 +47,24 @@ class PuppetctlExecution(object):
         if sudo_user:
             self.invoking_user = sudo_user
         elif user:
+            # This begins a somewhat sketchy path.  Someone is not sudo'ed.
+            # This means they're either themselves and running a non-lock command (don't care),
+            # OR, they're full root, i.e `sudo su -` rather than `sudo su` or `sudo -i`.  We have
+            # no idea who they are besides 'root'.  The lock they create will be owned by root,
+            # which introduces edge cases where someone coming through later and sudoing will 'be'
+            # root, but yet not have access to root's locks because we can trace back who they are
+            # and determine a real user.  This leads to "but I -am- root!" user confusion when
+            # the user performs some commands as full root, and then a (same or different) user
+            # tries to remove root's locks.
+            #
+            # We will treat creating the locks as "we will do what you say" and not really change
+            # things, because we want to err on the side of disabling puppet quickly and safely.
+            # The reenabling/removing of locks will be more cautious and require the user to jump
+            # hoops when they hit these edge cases, because ultimately the users should be acting
+            # as root in a consistent manner, and we are willing to penalize them a bit when they
+            # do inconsistent things.
+            #
+            # tl;dr: use `sudo -i` and not `sudo su -` for the general case.
             self.invoking_user = user
         else:
             self.invoking_user = 'UNKNOWN'
@@ -151,8 +169,16 @@ class PuppetctlExecution(object):
             others_disables = self.statefile_object.get_disable_lock_ids()
             others_noops = self.statefile_object.get_noop_lock_ids()
             if others_disables:
-                self.color_print(("Puppet is already enabled for {you}, but other users have "
-                                  "puppet disabled.").format(you=self.invoking_user))
+                root_disables = self.statefile_object.get_disable_lock_ids('root')
+                if others_disables == root_disables:
+                    self.color_print(('Puppet is already enabled for {you}, but root has '
+                                      'puppet disabled.').format(you=self.invoking_user))
+                    self.color_print(('This is an odd state caused by someone disabling puppet '
+                                      'from a login root shell.'))
+                    self.color_print('If this is your lock, `sudo su -` and run an enable.')
+                else:
+                    self.color_print(("Puppet is already enabled for {you}, but other users have "
+                                      "puppet disabled.").format(you=self.invoking_user))
                 self.lock_status()
             elif others_noops:
                 self.color_print(("Puppet is already enabled for {you}, but other users have "
@@ -233,8 +259,17 @@ class PuppetctlExecution(object):
                                   "have puppet disabled.").format(you=self.invoking_user))
                 self.lock_status()
             elif others_noops:
-                self.color_print(("Puppet is already in 'operate' mode for {you}, but other users "
-                                  "have puppet in noop mode.").format(you=self.invoking_user))
+                root_noops = self.statefile_object.get_noop_lock_ids('root')
+                if others_noops == root_noops:
+                    self.color_print(("Puppet is already in 'operate' mode for {you}, but root has "
+                                      'puppet in noop mode.').format(you=self.invoking_user))
+                    self.color_print(("This is an odd state caused by someone noop'ing puppet "
+                                      'from a login root shell.'))
+                    self.color_print('If this is your lock, `sudo su -` and run an operate.')
+                else:
+                    self.color_print(("Puppet is already in 'operate' mode for {you}, "
+                                      'but other users have puppet in noop mode.').format(
+                                          you=self.invoking_user))
                 self.lock_status()
             else:
                 self.color_print("Puppet is already in 'operate' mode.")

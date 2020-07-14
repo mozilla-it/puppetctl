@@ -69,6 +69,17 @@ class TestExecutionEnable(unittest.TestCase):
         mock_status.assert_called_once_with()
 
     def test_enable_not_our_locks_2(self):
+        ''' Test that "enable" does nothing when we have no locks, but root does. '''
+        now = int(time.time())
+        self.library.statefile_object.add_lock('root', 'disable', now+30*60, 'I disabled 1h')
+        with mock.patch('sys.stdout', new=StringIO()) as fake_out:
+            with mock.patch.object(PuppetctlExecution, 'lock_status') as mock_status:
+                self.library.enable()
+        self.assertIn('Puppet is already enabled for ', fake_out.getvalue())
+        self.assertIn(', but root has puppet disabled.', fake_out.getvalue())
+        mock_status.assert_called_once_with()
+
+    def test_enable_not_our_locks_3(self):
         ''' Test that "enable" does nothing when we have no locks, but others noop. '''
         now = int(time.time())
         self.library.statefile_object.add_lock('somebody3', 'nooperate', now+90*60, 'I nooped 2h')
