@@ -65,7 +65,7 @@ class TestExecutionPanicStop(unittest.TestCase):
                 mock.patch('time.sleep') as mock_sleep, \
                 mock.patch('sys.stdout', new=StringIO()) as fake_out:
             self.library.panic_stop(False)
-        mock_kill.assert_called_once_with('123', signal.SIGTERM)
+        mock_kill.assert_called_once_with(123, signal.SIGTERM)
         mock_sleep.assert_called_once_with(2)
         self.assertIn("Sending SIGTERM to pid 123 / 'test-puppet agent'", fake_out.getvalue())
         self.assertIn("No running 'puppet agent' found", fake_out.getvalue())
@@ -80,7 +80,7 @@ class TestExecutionPanicStop(unittest.TestCase):
                 mock.patch('time.sleep') as mock_sleep, \
                 mock.patch('sys.stdout', new=StringIO()) as fake_out:
             self.library.panic_stop(True)
-        mock_kill.assert_called_once_with('234', signal.SIGTERM)
+        mock_kill.assert_called_once_with(234, signal.SIGTERM)
         mock_sleep.assert_not_called()
         self.assertIn("Sending SIGTERM to pid 234 / 'test-puppet agent'", fake_out.getvalue())
         self.assertIn("No running 'puppet agent' found", fake_out.getvalue())
@@ -98,9 +98,9 @@ class TestExecutionPanicStop(unittest.TestCase):
                 mock.patch('time.sleep') as mock_sleep, \
                 mock.patch('sys.stdout', new=StringIO()) as fake_out:
             self.library.panic_stop(False)
-        mock_kill.assert_any_call('123', signal.SIGTERM)
+        mock_kill.assert_any_call(123, signal.SIGTERM)
         mock_sleep.assert_any_call(2)  # the non-force pause
-        mock_kill.assert_called_with('123', signal.SIGKILL)
+        mock_kill.assert_called_with(123, signal.SIGKILL)
         mock_sleep.assert_any_call(1)  # the mandatory pause after the kill signal
         self.assertIn("Sending SIGTERM to pid 123 / 'test-puppet agent'", fake_out.getvalue())
         self.assertIn("Sending SIGKILL to pid 123 / 'test-puppet agent'", fake_out.getvalue())
@@ -117,8 +117,8 @@ class TestExecutionPanicStop(unittest.TestCase):
                 mock.patch('time.sleep') as mock_sleep, \
                 mock.patch('sys.stdout', new=StringIO()) as fake_out:
             self.library.panic_stop(True)
-        mock_kill.assert_any_call('234', signal.SIGTERM)
-        mock_kill.assert_called_with('234', signal.SIGKILL)
+        mock_kill.assert_any_call(234, signal.SIGTERM)
+        mock_kill.assert_called_with(234, signal.SIGKILL)
         mock_sleep.assert_any_call(1)  # the mandatory pause after the kill signal
         self.assertIn("Sending SIGTERM to pid 234 / 'test-puppet agent'", fake_out.getvalue())
         self.assertIn("Sending SIGKILL to pid 234 / 'test-puppet agent'", fake_out.getvalue())
@@ -138,9 +138,9 @@ class TestExecutionPanicStop(unittest.TestCase):
                 mock.patch('time.sleep') as mock_sleep, \
                 mock.patch('sys.stdout', new=StringIO()) as fake_out:
             self.library.panic_stop(False)
-        mock_kill.assert_any_call('123', signal.SIGTERM)
+        mock_kill.assert_any_call(123, signal.SIGTERM)
         mock_sleep.assert_any_call(2)  # the non-force pause
-        mock_kill.assert_called_with('123', signal.SIGKILL)
+        mock_kill.assert_called_with(123, signal.SIGKILL)
         mock_sleep.assert_any_call(1)  # the mandatory pause after the kill signal
         self.assertIn("Sending SIGTERM to pid 123 / 'test-puppet agent'", fake_out.getvalue())
         self.assertIn("Sending SIGKILL to pid 123 / 'test-puppet agent'", fake_out.getvalue())
@@ -158,8 +158,8 @@ class TestExecutionPanicStop(unittest.TestCase):
                 mock.patch('time.sleep') as mock_sleep, \
                 mock.patch('sys.stdout', new=StringIO()) as fake_out:
             self.library.panic_stop(True)
-        mock_kill.assert_any_call('234', signal.SIGTERM)
-        mock_kill.assert_called_with('234', signal.SIGKILL)
+        mock_kill.assert_any_call(234, signal.SIGTERM)
+        mock_kill.assert_called_with(234, signal.SIGKILL)
         mock_sleep.assert_any_call(1)  # the mandatory pause after the kill signal
         self.assertIn("Sending SIGTERM to pid 234 / 'test-puppet agent'", fake_out.getvalue())
         self.assertIn("Sending SIGKILL to pid 234 / 'test-puppet agent'", fake_out.getvalue())

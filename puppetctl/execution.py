@@ -226,8 +226,8 @@ class PuppetctlExecution(object):
                 proc = "A 'puppet agent' process is" if (len(pidmap) == 1) \
                     else "Multiple 'puppet agent' processes are"
                 self.color_print('{proc} running:'.format(proc=proc), '0;36')
-                for (pid, cmd) in pidmap.items():
-                    self.color_print('  {pid}  {cmd}'.format(pid=pid, cmd=cmd), '0;36')
+                for (pidstr, cmd) in pidmap.items():
+                    self.color_print('  {pid}  {cmd}'.format(pid=pidstr, cmd=cmd), '0;36')
                 self.color_print('If you need to stop an active puppet run from finishing:', '0;33')
                 self.color_print('   puppetctl panic-stop --force', '0;33')
         else:
@@ -315,8 +315,8 @@ class PuppetctlExecution(object):
                 proc = "A 'puppet agent' process is" if (len(pidmap) == 1) \
                     else "Multiple 'puppet agent' processes are"
                 self.color_print('{proc} running:'.format(proc=proc), '0;36')
-                for (pid, cmd) in pidmap.items():
-                    self.color_print('  {pid}  {cmd}'.format(pid=pid, cmd=cmd), '0;36')
+                for (pidstr, cmd) in pidmap.items():
+                    self.color_print('  {pid}  {cmd}'.format(pid=pidstr, cmd=cmd), '0;36')
                 self.color_print('If you need to stop an active puppet run from finishing:', '0;33')
                 self.color_print('   puppetctl panic-stop --force', '0;33')
         else:
@@ -460,9 +460,9 @@ class PuppetctlExecution(object):
             sys.exit(0)
         # While there should only ever be one agent running, treat it as
         # potentially multiple, just in case we ever expand.
-        for (pid, cmd) in pidmap.items():
-            self.color_print("Sending SIGTERM to pid {pid} / '{cmd}'".format(pid=pid, cmd=cmd))
-            os.kill(pid, signal.SIGTERM)
+        for (pidstr, cmd) in pidmap.items():
+            self.color_print("Sending SIGTERM to pid {pid} / '{cmd}'".format(pid=pidstr, cmd=cmd))
+            os.kill(int(pidstr), signal.SIGTERM)
         if not force:
             time.sleep(sleep_between_signals)
 
@@ -472,17 +472,17 @@ class PuppetctlExecution(object):
         if not pidmap:
             self.log_print("No running 'puppet agent' found.")
             sys.exit(0)
-        for (pid, cmd) in pidmap.items():
-            self.color_print("Sending SIGKILL to pid {pid} / '{cmd}'".format(pid=pid, cmd=cmd))
-            os.kill(pid, signal.SIGKILL)
+        for (pidstr, cmd) in pidmap.items():
+            self.color_print("Sending SIGKILL to pid {pid} / '{cmd}'".format(pid=pidstr, cmd=cmd))
+            os.kill(int(pidstr), signal.SIGKILL)
         # One last time
         time.sleep(1)
         pidmap = self._puppet_processes_running()
         if not pidmap:
             self.log_print("No running 'puppet agent' found.")
             sys.exit(0)
-        for (pid, cmd) in pidmap.items():
-            self.log_print("pid {pid} / '{cmd}' did NOT die.".format(pid=pid, cmd=cmd))
+        for (pidstr, cmd) in pidmap.items():
+            self.log_print("pid {pid} / '{cmd}' did NOT die.".format(pid=pidstr, cmd=cmd))
         sys.exit(1)
 
     def _parse_puppet_lastrunfile(self, lastrunfile):
