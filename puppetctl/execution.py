@@ -481,9 +481,9 @@ class PuppetctlExecution(object):
         if not pidmap:
             self.log_print("No running 'puppet agent' found.")
             sys.exit(0)
-        else:
+        for (pid, cmd) in pidmap.items():
             self.log_print("pid {pid} / '{cmd}' did NOT die.".format(pid=pid, cmd=cmd))
-            sys.exit(1)
+        sys.exit(1)
 
     def _parse_puppet_lastrunfile(self, lastrunfile):
         '''
