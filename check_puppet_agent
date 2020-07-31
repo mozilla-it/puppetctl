@@ -105,13 +105,18 @@ check_catalog_compile(){
 
       # see https://puppet.com/docs/puppet/latest/format_report.html for hints
       # on how we go through the object from the YAML file.
-      # Loop through the logs, and print the first log at the 'err' level.
+      #
+      # Loop through the logs, and print the first log at the 'err' level
+      # that ISN'T a transient file issue when puppetserver restarts on you
+      # in the middle of your puppet run.
+      #
       # Future caution: the failure message is presently always the first error.
       # This might need better logic in the future.
       failed_catalog=$(reportfile=$reportfile ruby -rpuppet -ryaml \
       -e "output = File.open(ENV['reportfile']){ |data| YAML::load(data) }; \
           for line in output.logs do \
             next if line.level.to_s() != 'err'; \
+            next if line.message.to_s().include? 'Attempted to borrow a JRubyInstance from the pool during a shutdown'; EOF
             puts line; \
             break; \
           end" 2>/dev/null)
