@@ -83,10 +83,21 @@ check_last_run_time(){
 }
 
 check_last_run_errors(){
-   failed=$(awk '/\s*failed:/ {print $2}' "$statefile")
-   failure=$(awk '/\s*failed:/ {print $2}' "$statefile")
-   fail_to_restart=$(awk '/\s*failed:/ {print $2}' "$statefile")
-   sum_of_fail=$((failed+failure+fail_to_restart))
+   {
+      # We add /opt/puppetlabs/puppet/bin because we want access to
+      # the ruby binary (for parsing the last-run yaml), since trying to parse
+      # YAML in bash is insane.
+      PATH=/opt/puppetlabs/puppet/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin
+
+      # We used to capture the value down at 'events.failure' but that's basically
+      # a dupe of resource failures so we just count resource failures.
+      sum_of_fail=$(statefile=$statefile ruby -rpuppet -ryaml \
+      -e "output = File.open(ENV['statefile']){ |data| YAML::load(data) }; \
+          failed = output.fetch('resources').fetch('failed'); \
+          failed_to_restart = output.fetch('resources').fetch('failed_to_restart'); \
+          sum_of_fail = failed + failed_to_restart; \
+          puts sum_of_fail") 2>/dev/null
+   }
 
    if [ "${sum_of_fail:-0}" -gt 0 ]; then
       if [ "${sum_of_fail:-0}" -gt 1 ]; then
