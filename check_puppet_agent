@@ -19,7 +19,7 @@ PATH=/usr/bin:/usr/sbin:/opt/puppetlabs/bin
 
 puppetversion=$(puppet -V)
 statedir=$(puppet config print statedir)
-statefile=${statedir}/last_run_summary.yaml
+lastrunfile=${statedir}/last_run_summary.yaml
 reportfile=${statedir}/last_run_report.yaml
 
 usage(){
@@ -28,13 +28,12 @@ usage(){
       echo
    fi
 
-   echo -e "Usage: $0 [-c] [-t <threshold>] [-s <statefile>] [-r <reportfile>]"
+   echo -e "Usage: $0 [-c] [-t <threshold>] [-s <lastrunfile>] [-r <reportfile>]"
    echo
-   echo -e "\t-w last run alert threshold"
    echo -e "\t-c check for catalog compilation failures only"
-   echo -e "\t-d disable file location (default: ${statedir}/disabled.at)"
-   echo -e "\t-r report file location (default: ${statedir}/last_run_report.yaml)"
-   echo -e "\t-s state file location (default: ${statedir}/last_run_summary.yaml)"
+   echo -e "\t-t last run alert threshold"
+   echo -e "\t-r report file location (default: ${reportfile})"
+   echo -e "\t-s summary file location (default: ${lastrunfile})"
    echo
    exit 1
 }
@@ -63,10 +62,10 @@ check_catalog_version(){
 
 check_last_run_time(){
    if puppetctl is-enabled >/dev/null ; then
-      # Parse last_last run from statefile
-      last_run_time=$(awk '/\s*last_run:/ {print $2}' "$statefile")
+      # Parse last_last run from lastrunfile
+      last_run_time=$(awk '/\s*last_run:/ {print $2}' "$lastrunfile")
       if [ "${last_run_time:-0}" -eq 0 ]; then
-         result "Can't get last_run from $statefile" 3
+         result "Can't get last_run from $lastrunfile" 3
       fi
 
       now=$(date "+%s")
@@ -91,8 +90,8 @@ check_last_run_errors(){
 
       # We used to capture the value down at 'events.failure' but that's basically
       # a dupe of resource failures so we just count resource failures.
-      sum_of_fail=$(statefile=$statefile ruby -rpuppet -ryaml \
-      -e "output = File.open(ENV['statefile']){ |data| YAML::load(data) }; \
+      sum_of_fail=$(lastrunfile=$lastrunfile ruby -rpuppet -ryaml \
+      -e "output = File.open(ENV['lastrunfile']){ |data| YAML::load(data) }; \
           failed = output.fetch('resources').fetch('failed'); \
           failed_to_restart = output.fetch('resources').fetch('failed_to_restart'); \
           sum_of_fail = failed + failed_to_restart; \
@@ -158,7 +157,7 @@ while getopts "t:s:r:c" opt; do
          threshold=$OPTARG
          ;;
       s)
-         statefile=$OPTARG
+         lastrunfile=$OPTARG
          ;;
       r)
          reportfile=$OPTARG
@@ -175,8 +174,8 @@ while getopts "t:s:r:c" opt; do
    esac
 done
 
-if [ ! -f "$statefile" ]; then
-   result "State file $statefile doesn't exist" 3
+if [ ! -f "$lastrunfile" ]; then
+   result "Summary file $lastrunfile doesn't exist" 3
 fi
 
 if [ ! -f "$reportfile" ]; then
