@@ -126,7 +126,7 @@ check_catalog_compile(){
       -e "output = File.open(ENV['reportfile']){ |data| YAML::load(data) }; \
           for line in output.logs do \
             next if line.level.to_s() != 'err'; \
-            next if line.message.to_s().include? 'Attempted to borrow a JRubyInstance from the pool during a shutdown'; EOF
+            next if line.message.to_s().include? 'Attempted to borrow a JRubyInstance from the pool during a shutdown'; \
             puts line; \
             break; \
           end" 2>/dev/null)
