@@ -121,17 +121,8 @@ class PuppetctlExecution(object):
         '''
         return len(self.statefile_object.get_noop_lock_ids(user)) == 0
 
-    def run(self, puppet_agent_args):
-        ''' Run puppet.  Duh. '''
-        if not self._allowed_to_run_command():
-            self.error_print("Must be root to run puppet.")
-        if not self.is_enabled():
-            # We don't want to run.  If this is a cron-kicked run, we'll just quietly exit.
-            # If it's a human, tell them why not:
-            if sys.stdout.isatty():
-                self.lock_status()
-            sys.exit(0)
-
+    def _perform_run(self, puppet_agent_args):
+        ''' Make the exec call to run puppet agent '''
         puppet_agent_options = ['--verbose', '--onetime', '--no-daemonize', '--no-splay']
         # beware of thundering-herds since we do a --no-splay
         if not self.is_operating():
@@ -146,6 +137,27 @@ class PuppetctlExecution(object):
         passed_args = ['puppet', 'agent'] + puppet_agent_options
         os.environ['PATH'] = self.puppet_bin_path
         os.execvpe('puppet', passed_args, env=os.environ)
+
+    def run(self, puppet_agent_args):
+        ''' Run puppet.  Duh. '''
+        if not self._allowed_to_run_command():
+            self.error_print("Must be root to run puppet.")
+        if not self.is_enabled():
+            # We don't want to run.  Tell them why not:
+            self.lock_status()
+            sys.exit(0)
+        self._perform_run(puppet_agent_args)
+
+    def cron_run(self, puppet_agent_args):
+        ''' Run puppet as if cron called you. '''
+        if not self._allowed_to_run_command():
+            # We COULD be quiet here, but this is an error so help them out:
+            self.error_print("Must be root to run puppet.")
+        if not self.is_enabled():
+            # We don't want to run.  Just quietly exit, because cron's
+            # job is to trigger this, but it doesn't need to know we're disabled.
+            sys.exit(0)
+        self._perform_run(puppet_agent_args)
 
     def enable(self):
         '''

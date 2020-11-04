@@ -183,6 +183,16 @@ class TestCLIHandler(unittest.TestCase):
             self.library.subcommand_run('puppetctl', 'run', ['--test'])
         mock_run.assert_called_once_with(['--test'])
 
+    def test_sc_cronrun(self):
+        ''' Check subcommand_cron_run '''
+        with mock.patch.object(PuppetctlExecution, 'cron_run') as mock_run:
+            self.library.subcommand_cron_run('puppetctl', 'cron-run', [])
+        mock_run.assert_called_once_with([])
+        # args passed along blindly:
+        with mock.patch.object(PuppetctlExecution, 'cron_run') as mock_run:
+            self.library.subcommand_cron_run('puppetctl', 'cron-run', ['--test'])
+        mock_run.assert_called_once_with(['--test'])
+
     def test_sc_status(self):
         ''' Check subcommand_status '''
         with mock.patch.object(PuppetctlExecution, 'status') as mock_status:

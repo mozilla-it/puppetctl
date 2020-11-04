@@ -73,6 +73,7 @@ class PuppetctlCLIHandler(object):
                operate          Have puppet operate in normal mode
                nooperate        Have puppet operate in noop mode
                run              Puppet agent run
+               cron-run         Puppet agent run, with no output
             Emergency commands, requires root:
                break-all-locks  Removes all locks, even ones that do not belong to you
                panic-stop       Kills any active puppet run, disables puppet for {disable_time}''')
@@ -95,8 +96,8 @@ class PuppetctlCLIHandler(object):
                                          formatter_class=argparse.RawDescriptionHelpFormatter)
         parser.add_argument('command', help='puppetctl command to run',
                             choices=['help', 'is-enabled', 'is-operating', 'enable', 'disable',
-                                     'operate', 'nooperate', 'run', 'status', 'lock-status',
-                                     'motd-status', 'break-all-locks', 'panic-stop'])
+                                     'operate', 'nooperate', 'run', 'cron-run', 'lock-status',
+                                     'status', 'motd-status', 'break-all-locks', 'panic-stop'])
         # If we got nothing but argv[0] then bail out:
         if len(argv) < 2:
             parser.print_help()
@@ -295,6 +296,13 @@ class PuppetctlCLIHandler(object):
     def subcommand_run(self, _ctlcmd, _subcmd, argv):
         ''' Tell puppet to run.  Pass along all arguments as params to puppet agent. '''
         self.runner.run(argv)
+
+    def subcommand_cron_run(self, _ctlcmd, _subcmd, argv):
+        '''
+            Tell puppet to run, and assume cron called you.
+            Pass along all arguments as params to puppet agent.
+        '''
+        self.runner.cron_run(argv)
 
     def subcommand_status(self, _ctlcmd, _subcmd, _argv):
         '''
