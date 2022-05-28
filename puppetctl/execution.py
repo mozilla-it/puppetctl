@@ -11,7 +11,10 @@ import syslog
 from .statefile import PuppetctlStatefile
 
 DEFAULT_PUPPET_BIN_PATH = '/opt/puppetlabs/puppet/bin'
-DEFAULT_LASTRUNFILE = '/opt/puppetlabs/puppet/cache/state/last_run_summary.yaml'
+# puppet 7 moved the location of last_run_summary
+# https://puppet.com/docs/puppet/7/release_notes_puppet.html#new_features_puppet_7-0-0-pup-10627
+DEFAULT_LASTRUNFILE_7 = '/opt/puppetlabs/puppet/public/last_run_summary.yaml'
+DEFAULT_LASTRUNFILE_6 = '/opt/puppetlabs/puppet/cache/state/last_run_summary.yaml'
 DEFAULT_AGENT_CATALOG_RUN_LOCKFILE = '/opt/puppetlabs/puppet/cache/state/agent_catalog_run.lock'
 
 
@@ -23,9 +26,13 @@ class PuppetctlExecution(object):
                  lastrunfile=None,
                  agent_catalog_run_lockfile=None):
         ''' Set basic parameters for executing '''
+        if os.path.exists('/opt/puppetlabs/puppet/public/last_run_summary.yaml'):
+            default_lastrunfile = DEFAULT_LASTRUNFILE_7
+        else:
+            default_lastrunfile = DEFAULT_LASTRUNFILE_6
         self.defaults = {
             'puppet_bin_path': DEFAULT_PUPPET_BIN_PATH,
-            'lastrunfile': DEFAULT_LASTRUNFILE,
+            'lastrunfile': default_lastrunfile,
             'agent_catalog_run_lockfile': DEFAULT_AGENT_CATALOG_RUN_LOCKFILE,
         }
         # don't check state_file, it's not ours to manage.  pass it along.
