@@ -76,7 +76,7 @@ class TestExecutionStatusPuppet(unittest.TestCase):
                 mock.patch('os.path.exists', return_value=True), \
                 mock.patch.object(PuppetctlExecution, '_parse_puppet_lastrunfile') as mock_parse:
             self.library._status_of_puppet('/tmp/pretend-i-exist.txt')
-        mock_parse.assert_not_called()
+        mock_parse.assert_called_once_with('/tmp/pretend-i-exist.txt')
 
     def test_status_puppet_nofile(self):
         ''' Emulate testing the status of puppet when the file doesn't exist '''

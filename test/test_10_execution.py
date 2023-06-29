@@ -5,7 +5,6 @@
 import unittest
 import os
 import test.context  # pylint: disable=unused-import
-import mock
 from puppetctl import PuppetctlStatefile, PuppetctlExecution
 
 
@@ -32,12 +31,8 @@ class TestExecutionClass(unittest.TestCase):
 
     def test_spoof_puppet_versions(self):
         ''' Verify we get the right last_run_summary.yaml file. '''
-        with mock.patch('os.path.exists', return_value=True):
-             library = PuppetctlExecution()
+        library = PuppetctlExecution()
         self.assertEqual(library.lastrunfile, '/opt/puppetlabs/puppet/public/last_run_summary.yaml')
-        with mock.patch('os.path.exists', return_value=False):
-             library = PuppetctlExecution()
-        self.assertEqual(library.lastrunfile, '/opt/puppetlabs/puppet/cache/state/last_run_summary.yaml')
 
     def test_init_sudo(self):
         ''' Verify that the self object handles user edge-cases '''

@@ -13,8 +13,7 @@ from .statefile import PuppetctlStatefile
 DEFAULT_PUPPET_BIN_PATH = '/opt/puppetlabs/puppet/bin'
 # puppet 7 moved the location of last_run_summary
 # https://puppet.com/docs/puppet/7/release_notes_puppet.html#new_features_puppet_7-0-0-pup-10627
-DEFAULT_LASTRUNFILE_7 = '/opt/puppetlabs/puppet/public/last_run_summary.yaml'
-DEFAULT_LASTRUNFILE_6 = '/opt/puppetlabs/puppet/cache/state/last_run_summary.yaml'
+DEFAULT_LASTRUNFILE = '/opt/puppetlabs/puppet/public/last_run_summary.yaml'
 DEFAULT_AGENT_CATALOG_RUN_LOCKFILE = '/opt/puppetlabs/puppet/cache/state/agent_catalog_run.lock'
 
 
@@ -26,10 +25,7 @@ class PuppetctlExecution(object):
                  lastrunfile=None,
                  agent_catalog_run_lockfile=None):
         ''' Set basic parameters for executing '''
-        if os.path.exists('/opt/puppetlabs/puppet/public/last_run_summary.yaml'):
-            default_lastrunfile = DEFAULT_LASTRUNFILE_7
-        else:
-            default_lastrunfile = DEFAULT_LASTRUNFILE_6
+        default_lastrunfile = DEFAULT_LASTRUNFILE
         self.defaults = {
             'puppet_bin_path': DEFAULT_PUPPET_BIN_PATH,
             'lastrunfile': default_lastrunfile,
@@ -551,10 +547,8 @@ class PuppetctlExecution(object):
         '''
             return a structure containing info about the last run of puppet
             (not about the locks in puppetctl)
+            The lastrunfile is presumed public as of Puppet 7.
         '''
-        if os.geteuid() != 0:
-            return {'errors': 0, 'message': ('Cannot provide the last run information '
-                                             'on puppet without being root.')}
         if not os.path.exists(lastrunfile):
             msg = 'No "{}" file to get puppet information from.'.format(lastrunfile)
             return {'errors': 0, 'message': msg, }

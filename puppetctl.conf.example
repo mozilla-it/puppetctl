@@ -19,7 +19,7 @@ puppet_bin_path = /opt/puppetlabs/puppet/bin
 
 # lastrunfile is the result of 'puppet config print lastrunfile'.
 # It's the file we look at to report on puppet status.
-lastrunfile = /opt/puppetlabs/puppet/cache/state/last_run_summary.yaml
+lastrunfile = /opt/puppetlabs/puppet/public/last_run_summary.yaml
 
 # agent_catalog_run_lockfile is the result of 'puppet config print agent_catalog_run_lockfile'
 # It's the lock file that tells us puppet is currently running.

@@ -4,6 +4,8 @@ puppetctl is a wrapper around puppet to aid in system administration changes.
 Rather than using a daemonized agent and long strings of options, all runs go through `puppetctl run`.  Users may disable future runs of puppet for periods of time, or place the host in nooperate
  mode to test changes without worrying about puppet coming through and making a change.
 
+Requires Puppet 7 and newer.
+
 ## Available Subcommands:
 ### Status-Related Commands
 
