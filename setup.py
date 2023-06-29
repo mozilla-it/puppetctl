@@ -5,7 +5,7 @@ import subprocess
 from setuptools import setup
 
 NAME = 'puppetctl'
-VERSION = '0.9.5'
+VERSION = '0.9.6'
 
 
 def git_version():
