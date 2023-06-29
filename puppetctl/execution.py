@@ -547,8 +547,10 @@ class PuppetctlExecution(object):
         '''
             return a structure containing info about the last run of puppet
             (not about the locks in puppetctl)
-            The lastrunfile is presumed public as of Puppet 7.
         '''
+        if os.geteuid() != 0:
+            return {'errors': 0, 'message': ('Cannot provide the last run information '
+                                             'on puppet without being root.')}
         if not os.path.exists(lastrunfile):
             msg = 'No "{}" file to get puppet information from.'.format(lastrunfile)
             return {'errors': 0, 'message': msg, }
