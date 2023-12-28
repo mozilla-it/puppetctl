@@ -3,15 +3,11 @@
 '''
 
 import unittest
-import sys
 import time
+from io import StringIO
 import test.context  # pylint: disable=unused-import
 import mock
 from puppetctl import PuppetctlExecution, PuppetctlCLIHandler
-if sys.version_info.major >= 3:
-    from io import StringIO  # pragma: no cover
-else:
-    from io import BytesIO as StringIO  # pragma: no cover
 
 
 class TestCLIHandler(unittest.TestCase):

@@ -3,18 +3,14 @@
 '''
 
 import unittest
-import sys
 import os
 import time
 import subprocess
+import builtins
+from io import StringIO
 import test.context  # pylint: disable=unused-import
-import six
 import mock
 from puppetctl import PuppetctlExecution
-if sys.version_info.major >= 3:
-    from io import StringIO  # pragma: no cover
-else:
-    from io import BytesIO as StringIO  # pragma: no cover
 
 
 class TestExecutionStatusPuppet(unittest.TestCase):
@@ -121,7 +117,7 @@ class TestExecutionStatusPuppet(unittest.TestCase):
         # All future checks have root privs
         with mock.patch('os.geteuid', return_value=0):
 
-            with mock.patch.object(six.moves.builtins, 'open',
+            with mock.patch.object(builtins, 'open',
                                    mock.mock_open(read_data='not_a_pid')):
                 result = self.library._puppet_processes_running(test_lockfile)
             self.assertEqual(result, {})
@@ -147,7 +143,7 @@ class TestExecutionStatusPuppet(unittest.TestCase):
                 #
                 # Pretend that the proc has disappeared in the sliver of
                 # time between the time we stat'ed it.
-                with mock.patch.object(six.moves.builtins, 'open') as mopen:
+                with mock.patch.object(builtins, 'open') as mopen:
                     handlers = (mock.mock_open(read_data=sample_pid).return_value,
                                 IOError)
                     mopen.side_effect = handlers
@@ -155,7 +151,7 @@ class TestExecutionStatusPuppet(unittest.TestCase):
                 self.assertEqual(result, {})
 
                 # Pretend that the proc is somehow not puppet.
-                with mock.patch.object(six.moves.builtins, 'open') as mopen:
+                with mock.patch.object(builtins, 'open') as mopen:
                     handlers = (mock.mock_open(read_data=sample_pid).return_value,
                                 mock.mock_open(read_data='echo\0some\0string\0').return_value)
                     mopen.side_effect = handlers
@@ -163,7 +159,7 @@ class TestExecutionStatusPuppet(unittest.TestCase):
                 self.assertEqual(result, {})
 
                 # FINALLY.  Pretend that this was an actual puppet run.
-                with mock.patch.object(six.moves.builtins, 'open') as mopen:
+                with mock.patch.object(builtins, 'open') as mopen:
                     handlers = (mock.mock_open(read_data=sample_pid).return_value,
                                 mock.mock_open(read_data=('/opt/puppetlabs/puppet/bin/ruby\0'
                                                           '/opt/puppetlabs/puppet/bin/puppet\0'

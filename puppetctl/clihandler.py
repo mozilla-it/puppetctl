@@ -5,10 +5,7 @@ import sys
 import re
 import time
 import argparse
-try:
-    import configparser
-except ImportError:  # pragma: no cover
-    from six.moves import configparser
+import configparser
 import textwrap
 from .execution import PuppetctlExecution
 

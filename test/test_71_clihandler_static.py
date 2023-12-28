@@ -3,16 +3,12 @@
 '''
 
 import unittest
-import sys
 import os
 import time
 import argparse
+import configparser
 import test.context  # pylint: disable=unused-import
 from puppetctl import PuppetctlExecution, PuppetctlCLIHandler
-if sys.version_info.major >= 3:
-    import configparser  # pragma: no cover
-else:
-    from six.moves import configparser  # pragma: no cover
 
 
 class TestCLIHandler(unittest.TestCase):

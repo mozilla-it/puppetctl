@@ -48,7 +48,6 @@ setup(
                  'This package is built upon commit ' + git_version()),
     install_requires=[
         'setuptools',
-        'six',
     ],
     license='Apache License 2.0',
     entry_points={
