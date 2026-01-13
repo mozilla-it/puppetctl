@@ -86,14 +86,25 @@ class TestExecutionEnable(unittest.TestCase):
         self.assertIn(', but other users have puppet in noop mode.', fake_out.getvalue())
         mock_status.assert_called_once_with()
 
-    def test_enable_disable_mylock(self):
+    def test_enable_enable_mylock(self):
         ''' Test that "enable" wants to enable when it's my lock. '''
         now = int(time.time())
         self.library.statefile_object.add_lock(self.library.invoking_user, 'disable',
                                                now+30*60, 'It is my lock')
         with mock.patch('sys.stdout', new=StringIO()) as fake_out:
             self.library.enable()
-        self.assertIn('Puppet has been enabled.', fake_out.getvalue())
+        self.assertIn('Puppet has been enabled', fake_out.getvalue())
+
+    def test_enable_one_but_not_all(self):
+        ''' Test that "enable" releases my lock when others have one. '''
+        now = int(time.time())
+        self.library.statefile_object.add_lock('somebody2', 'disable', now+30*60, 'I disabled 1h')
+        self.library.statefile_object.add_lock(self.library.invoking_user, 'disable',
+                                               now+30*60, 'It is my lock')
+        with mock.patch('sys.stdout', new=StringIO()) as fake_out:
+            self.library.enable()
+        self.assertIn('Puppet has been enabled', fake_out.getvalue())
+        self.assertIn(', but other users have puppet disabled.', fake_out.getvalue())
 
     def test_enable_noop_mylock(self):
         ''' Test that "enable" assists, but doesn't enable, when there's a noop lock. '''

@@ -177,7 +177,11 @@ class PuppetctlExecution(object):
             if not self.statefile_object.remove_lock(my_disables):
                 self.error_print(('Unable to remove prior disable lock '
                                   'before adding new one.'), '1;31')
-            self.log_print("Puppet has been enabled.")
+            if self.statefile_object.get_disable_lock_ids():
+                self.color_print((f'Puppet has been enabled for {self.invoking_user}, '
+                                  'but other users have puppet disabled.'))
+            else:
+                self.log_print("Puppet has been enabled.")
         elif my_noops:
             self.color_print(('Puppet is enabled, but is in nooperate mode.  '
                               "(hint: 'puppetctl operate' to change this)"))
