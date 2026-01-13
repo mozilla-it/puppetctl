@@ -69,7 +69,8 @@ class TestCLIHandler(unittest.TestCase):
         # Some absent file
         self.assertEqual(self.library._ingest_config_file('/tmp/file-we-never-made'), {})
         # A file that's there but not parseable
-        with open('/tmp/sillyfile.txt', 'w') as configfile:
+        with open('/tmp/sillyfile.txt',
+                  'w', encoding='utf-8') as configfile:
             configfile.write('12345')
         self.assertEqual(self.library._ingest_config_file('/tmp/sillyfile.txt'), {})
         os.remove('/tmp/sillyfile.txt')
@@ -81,7 +82,8 @@ class TestCLIHandler(unittest.TestCase):
         config.set('puppet', 'agent_catalog_run_lockfile', '/opt/run.lck')
         config.add_section('puppetctl')
         config.set('puppetctl', 'state_file', '/home/status')
-        with open('/tmp/modified.conf', 'w') as configfile:
+        with open('/tmp/modified.conf',
+                  'w', encoding='utf-8') as configfile:
             config.write(configfile)
         self.assertDictEqual(self.library._ingest_config_file('/tmp/modified.conf'),
                              {'puppet_bin_path': '/opt/somepath',

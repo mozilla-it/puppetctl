@@ -18,7 +18,7 @@ class TestExecutionStatusPuppetctl(unittest.TestCase):
         ''' Preparing test rig '''
         self.test_statefile = '/tmp/exec-status-puppet-statefile-mods.test.txt'
         self.library = PuppetctlExecution(self.test_statefile)
-        self.library.logging_tag = 'testingpuppetctl[{}]'.format(self.library.invoking_user)
+        self.library.logging_tag = f'testingpuppetctl[{self.library.invoking_user}]'
 
     def tearDown(self):
         ''' Cleanup test rig '''

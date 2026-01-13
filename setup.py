@@ -21,22 +21,24 @@ def git_version():
         env['LANGUAGE'] = 'C'
         env['LANG'] = 'C'
         env['LC_ALL'] = 'C'
-        out = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                               env=env).communicate()[0]
+        with subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                env=env) as subproc:
+            out = subproc.communicate()[0]
         return out
 
     try:
         out = _minimal_ext_cmd(['git', 'rev-parse', 'HEAD'])
         git_revision = out.strip().decode('ascii')
     except OSError:
-        git_revision = u"Unknown"
+        git_revision = 'Unknown'
 
     return git_revision
 
 
-def read(fname):
-    ''' Contents of a single filename '''
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+with open('README.md', 'r', encoding='utf-8') as longdesc:
+    LONGDESC = longdesc.read()
 
 setup(
     name=NAME,
@@ -55,7 +57,7 @@ setup(
     },
     keywords='puppet admin',
     url='https://github.com/mozilla-it/puppetctl',
-    long_description=read('README.md'),
+    long_description=LONGDESC,
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Topic :: Software Development :: Libraries :: Python Modules',

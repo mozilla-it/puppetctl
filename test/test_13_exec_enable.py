@@ -22,7 +22,7 @@ class TestExecutionEnable(unittest.TestCase):
         self.sf_patcher = mock.patch.object(PuppetctlStatefile, '_allowed_to_write_statefile',
                                             return_value=True)
         self.library = PuppetctlExecution(self.test_statefile)
-        self.library.logging_tag = 'testingpuppetctl[{}]'.format(self.library.invoking_user)
+        self.library.logging_tag = f'testingpuppetctl[{self.library.invoking_user}]'
         self.pe_patcher.start()
         self.sf_patcher.start()
 

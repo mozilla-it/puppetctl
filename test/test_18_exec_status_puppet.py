@@ -20,7 +20,7 @@ class TestExecutionStatusPuppet(unittest.TestCase):
         ''' Preparing test rig '''
         self.test_statefile = '/tmp/exec-status-puppetctl-statefile-mods.test.txt'
         self.library = PuppetctlExecution(self.test_statefile)
-        self.library.logging_tag = 'testingpuppetctl[{}]'.format(self.library.invoking_user)
+        self.library.logging_tag = f'testingpuppetctl[{self.library.invoking_user}]'
 
     def tearDown(self):
         ''' Cleanup test rig '''
@@ -32,12 +32,13 @@ class TestExecutionStatusPuppet(unittest.TestCase):
 
     def test_parse_lastrunfile(self):
         ''' Run our test files through _parse_puppet_lastrunfile '''
-        devnull = open(os.devnull, 'w')
-        retcode = subprocess.call(['ruby', '--version'],
-                                  env={'PATH': self.library.puppet_bin_path}, stdout=devnull)
-        if retcode != 0:  # pragma: no cover
-            self.skipTest('Cannot test without the puppet ruby environment')
-        devnull.close()
+        with open(os.devnull, 'w', encoding='utf-8') as devnull:
+            retcode = subprocess.call(['ruby', '--version'],
+                                      env={'PATH': self.library.puppet_bin_path},
+                                      stdout=devnull)
+            if retcode != 0:  # pragma: no cover
+                self.skipTest('Cannot test without the puppet ruby environment')
+            devnull.close()
         mydir = os.path.dirname(__file__)
 
         cleanfile = os.path.join(mydir, 'last_run_summary', 'clean_last_run_summary.yaml')
@@ -110,7 +111,8 @@ class TestExecutionStatusPuppet(unittest.TestCase):
         # Make a sample lock, that we'll use on the rest of the tests.
         sample_pid = '13579'
         test_lockfile = '/tmp/process_detect_pid.lock'
-        with open(test_lockfile, 'w') as writelock:
+        with open(test_lockfile,
+                  'w', encoding='utf-8') as writelock:
             writelock.write(sample_pid)
         fake_os_stat = os.stat('/')
 

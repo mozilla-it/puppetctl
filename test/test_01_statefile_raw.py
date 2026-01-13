@@ -47,7 +47,8 @@ class TestRawReadStatefile(unittest.TestCase):
     def test_reading_empty_file(self):
         ''' read an empty file '''
         # make a blank file:
-        with open(self.test_reading_file, 'w') as _filepointer:
+        with open(self.test_reading_file,
+                  'w', encoding='utf-8') as _filepointer:
             pass
         # ... read it ...
         result = self.library._read_state_file()
@@ -59,7 +60,8 @@ class TestRawReadStatefile(unittest.TestCase):
         # make a simple json file.  the purpose of the _read is to return raw contents,
         # so this is a fair test because it doesn't matter that this structure isn't like
         # our actual statefile entries.
-        with open(self.test_reading_file, 'w') as filepointer:
+        with open(self.test_reading_file,
+                  'w', encoding='utf-8') as filepointer:
             filepointer.write('{\n   "foo": 123\n}\n')
         result = self.library._read_state_file()
         # check that we got back our one-off structure.
@@ -68,7 +70,8 @@ class TestRawReadStatefile(unittest.TestCase):
     def test_reading_bad_json(self):
         ''' reading a json file that's gotten corrupted '''
         # make valid json file but non-dict, meaning it's wrong.
-        with open(self.test_reading_file, 'w') as filepointer:
+        with open(self.test_reading_file,
+                  'w', encoding='utf-8') as filepointer:
             filepointer.write('[]\n')
         result = self.library._read_state_file()
         # Check that we get taken back to baseline

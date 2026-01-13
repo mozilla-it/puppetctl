@@ -20,7 +20,7 @@ class TestExecutionCronRun(unittest.TestCase):
         self.pe_patcher = mock.patch.object(PuppetctlExecution, '_allowed_to_run_command',
                                             return_value=True)
         self.library = PuppetctlExecution(self.test_statefile)
-        self.library.logging_tag = 'testingpuppetctl[{}]'.format(self.library.invoking_user)
+        self.library.logging_tag = f'testingpuppetctl[{self.library.invoking_user}]'
         self.pe_patcher.start()
 
     def tearDown(self):

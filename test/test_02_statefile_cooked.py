@@ -44,12 +44,13 @@ class TestCookedReadStatefile(unittest.TestCase):
     def test_reading_cooked(self):
         ''' Verify we get a proper structure when there's an expired lock '''
         self.assertFalse(os.path.exists(self.test_reading_file))
-        with open(self.test_reading_file, 'w') as filepointer:
+        with open(self.test_reading_file,
+                  'w', encoding='utf-8') as filepointer:
             json.dump(self.locks, filepointer)
         # Call the reading function.
         result = self.library.read_state_file()  # public
         # Since there's an expired lock it should be culled to only the good ones
-        goodlocks = {k: self.locks[k] for k in self.locks if k in ['whodoyou', 'appreci8']}
+        goodlocks = {k: v for k,v in self.locks.items() if k in ['whodoyou', 'appreci8']}
         self.assertDictEqual(result, goodlocks)
 
     def test_writing_nonroot(self):

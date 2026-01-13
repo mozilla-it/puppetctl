@@ -113,11 +113,11 @@ class PuppetctlCLIHandler(object):
             parser.print_help()
             sys.exit(0)
         _flattened_subcommand = re.sub(r'-', '_', entered_subcommand)
-        subcommand_methodname = 'subcommand_{}'.format(_flattened_subcommand)
+        subcommand_methodname = f'subcommand_{_flattened_subcommand}'
         if not hasattr(self, subcommand_methodname):  # pragma: no cover
             # This is a safety valve we should never reach, as it would mean
             # we added something to 'choices' without making a function for it.
-            print('Unrecognized command "{}"\n'.format(entered_subcommand))
+            print(f'Unrecognized command "{entered_subcommand}"\n')
             parser.print_help()
             sys.exit(1)
         if confargs.config:
@@ -161,8 +161,7 @@ class PuppetctlCLIHandler(object):
         at_time_string = getattr(parser, 'time', None)
         date_time_string = getattr(parser, 'date', None)
         if not at_time_string and not date_time_string:
-            at_time_string = 'now + {default_disable_time_length}'.format(
-                default_disable_time_length=self.__class__.default_disable_time_length)
+            at_time_string = f'now + {self.__class__.default_disable_time_length}'
         if at_time_string:
             # this used to be the place where we would just lightly massage
             # the datestrings and pass them to 'at'.  Since we have removed
@@ -221,14 +220,14 @@ class PuppetctlCLIHandler(object):
     def subcommand_enable(self, ctlcmd, subcmd, argv):
         ''' Remove a disable lock, if possible '''
         # no arguments, but catch help
-        parser = argparse.ArgumentParser(prog='{} {}'.format(ctlcmd, subcmd),
+        parser = argparse.ArgumentParser(prog=f'{ctlcmd} {subcmd}',
                                          description='Enable future puppet runs')
         parser.parse_args(argv)
         self.runner.enable()
 
     def subcommand_disable(self, ctlcmd, subcmd, argv):
         ''' Add a disable lock, if allowed '''
-        parser = argparse.ArgumentParser(prog='{} {}'.format(ctlcmd, subcmd),
+        parser = argparse.ArgumentParser(prog=f'{ctlcmd} {subcmd}',
                                          description='Disable future puppet runs')
         parser.add_argument('--force', '-f', action='store_true',
                             help=('Force disable: overrides an existing disable with our new '
@@ -257,14 +256,14 @@ class PuppetctlCLIHandler(object):
 
     def subcommand_operate(self, ctlcmd, subcmd, argv):
         ''' Remove noop lock, if present. '''
-        parser = argparse.ArgumentParser(prog='{} {}'.format(ctlcmd, subcmd),
+        parser = argparse.ArgumentParser(prog=f'{ctlcmd} {subcmd}',
                                          description='Bring puppetctl out of noop mode')
         parser.parse_args(argv)
         self.runner.operate()
 
     def subcommand_nooperate(self, ctlcmd, subcmd, argv):
         ''' Add a noop lock, if possible '''
-        parser = argparse.ArgumentParser(prog='{} {}'.format(ctlcmd, subcmd),
+        parser = argparse.ArgumentParser(prog=f'{ctlcmd} {subcmd}',
                                          description='Put future puppet runs in noop mode')
         parser.add_argument('--force', '-f', action='store_true',
                             help=('Force nooperate: overrides an existing '
@@ -325,7 +324,7 @@ class PuppetctlCLIHandler(object):
 
             It is highly recommended that you speak to the person who added a lock
             before you break someone else's lock and reenable puppet runs.''')
-        parser = argparse.ArgumentParser(prog='{} {}'.format(ctlcmd, subcmd),
+        parser = argparse.ArgumentParser(prog=f'{ctlcmd} {subcmd}',
                                          formatter_class=argparse.RawDescriptionHelpFormatter,
                                          description=description)
         parser.add_argument('--force', '-f', action='count', default=0,
@@ -339,7 +338,7 @@ class PuppetctlCLIHandler(object):
         description = textwrap.dedent('''\
             If there is an active puppet run, this will stop it.
             We try with SIGTERM initially, and SIGKILL if it hasn't stopped in 2 seconds.''')
-        parser = argparse.ArgumentParser(prog='{} {}'.format(ctlcmd, subcmd),
+        parser = argparse.ArgumentParser(prog=f'{ctlcmd} {subcmd}',
                                          formatter_class=argparse.RawDescriptionHelpFormatter,
                                          description=description)
         parser.add_argument('--force', '-f', action='store_true',

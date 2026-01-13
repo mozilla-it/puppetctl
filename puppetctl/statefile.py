@@ -55,7 +55,8 @@ class PuppetctlStatefile(object):
             self.reset_state_file()
             return copy.deepcopy(self.empty_state_file_contents)
         # at this point there is a state file.
-        with open(self.state_file) as statefile_r:
+        with open(self.state_file,
+                  'r', encoding='utf-8') as statefile_r:
             try:
                 statefiledata_in = json.load(statefile_r)
             except ValueError:
@@ -119,7 +120,8 @@ class PuppetctlStatefile(object):
         ''' Commit a blob to the state file.  Return True upon success. '''
         if not self._allowed_to_write_statefile():
             return False
-        with open(self.state_file, 'w') as statefile_w:
+        with open(self.state_file,
+                  'w', encoding='utf-8') as statefile_w:
             json.dump(json_obj, statefile_w, sort_keys=True, indent=4)
             statefile_w.write('\n')
         # This write could raise.
@@ -221,8 +223,11 @@ class PuppetctlStatefile(object):
             tstr1 = 'Puppet has been disabled by {user} at {begintime} until {endtime}{message}'
         elif lock['locktype'] == self.flag_state_noop:
             tstr1 = 'Puppet is in nooperate mode by {user} at {begintime} until {endtime}{message}'
+        else:  # pragma: no cover
+            # This should never happen, all the above if's are the only allowed values
+            raise ValueError('locktype was not valid')
 
-        tstr2 = ' with the following message: {}'.format(lock['message']) if lock['message'] else ''
+        tstr2 = f" with the following message: {lock['message']}" if lock['message'] else ''
         outputstring = tstr1.format(user=lock['user'],
                                     begintime=time.ctime(lock['time_begin']),
                                     endtime=time.ctime(lock['time_expiry']),

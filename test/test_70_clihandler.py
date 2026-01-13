@@ -99,7 +99,8 @@ class TestCLIHandler(unittest.TestCase):
         config.set('puppet', 'lastrunfile', '/opt/puppetlabs.yaml')
         config.add_section('puppetctl')
         config.set('puppetctl', 'state_file', '/home/status')
-        with open('/tmp/test_cli_config_nonconf_good.conf', 'w') as configfile:
+        with open('/tmp/test_cli_config_nonconf_good.conf',
+                  'w', encoding='utf-8') as configfile:
             config.write(configfile)
         with mock.patch('sys.stdout', new=StringIO()), \
                 mock.patch.object(PuppetctlCLIHandler, 'subcommand_disable') as mock_main:

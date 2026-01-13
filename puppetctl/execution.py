@@ -71,7 +71,7 @@ class PuppetctlExecution(object):
             self.invoking_user = user
         else:
             self.invoking_user = 'UNKNOWN'
-        self.logging_tag = 'puppetctl[{}]'.format(self.invoking_user)
+        self.logging_tag = f'puppetctl[{self.invoking_user}]'
         self.statefile_object = PuppetctlStatefile(state_file)
 
     @staticmethod
@@ -97,13 +97,11 @@ class PuppetctlExecution(object):
     def color_print(message, color=None):
         ''' print out a line with optional color '''
         if color and sys.stdout.isatty():
-            print('\033[{color}m{message}\033[0m'.format(
-                color=color,
-                message=message))
+            print(f'\033[{color}m{message}\033[0m')
         elif sys.stdout.isatty():
             print(message)
         else:
-            print('puppetctl: {}'.format(message))
+            print(f'puppetctl: {message}')
 
     def error_print(self, message, color=None):
         ''' Print a line and terminate with an error exit code. '''
@@ -133,9 +131,12 @@ class PuppetctlExecution(object):
         puppet_agent_options.extend(puppet_agent_args)
 
         # In case someone has disabled with puppet instead of puppetctl:
-        p_enable = subprocess.Popen(['puppet', 'agent', '--enable'],
-                                    env={'PATH': self.puppet_bin_path})
-        p_enable.wait()
+        with subprocess.Popen(
+                ['puppet', 'agent', '--enable'],
+                env={'PATH': self.puppet_bin_path},
+                ) as p_enable:
+            p_enable.wait()
+
         # Time to run puppet for real.  exec so we relenquish control:
         passed_args = ['puppet', 'agent'] + puppet_agent_options
         os.environ['PATH'] = self.puppet_bin_path
@@ -186,18 +187,18 @@ class PuppetctlExecution(object):
             if others_disables:
                 root_disables = self.statefile_object.get_disable_lock_ids('root')
                 if others_disables == root_disables:
-                    self.color_print(('Puppet is already enabled for {you}, but root has '
-                                      'puppet disabled.').format(you=self.invoking_user))
+                    self.color_print((f'Puppet is already enabled for {self.invoking_user}, '
+                                      'but root has puppet disabled.'))
                     self.color_print(('This is an odd state caused by someone disabling puppet '
                                       'from a login root shell.'))
                     self.color_print('If this is your lock, `sudo su -` and run an enable.')
                 else:
-                    self.color_print(("Puppet is already enabled for {you}, but other users have "
-                                      "puppet disabled.").format(you=self.invoking_user))
+                    self.color_print((f'Puppet is already enabled for {self.invoking_user}, '
+                                      'but other users have puppet disabled.'))
                 self.lock_status()
             elif others_noops:
-                self.color_print(("Puppet is already enabled for {you}, but other users have "
-                                  "puppet in noop mode.").format(you=self.invoking_user))
+                self.color_print((f'Puppet is already enabled for {self.invoking_user}, '
+                                  'but other users have puppet in noop mode.'))
                 self.lock_status()
             else:
                 self.color_print("Puppet is already enabled.")
@@ -240,9 +241,9 @@ class PuppetctlExecution(object):
             if pidmap:
                 proc = "A 'puppet agent' process is" if (len(pidmap) == 1) \
                     else "Multiple 'puppet agent' processes are"
-                self.color_print('{proc} running:'.format(proc=proc), '0;36')
+                self.color_print(f'{proc} running:', '0;36')
                 for (pidstr, cmd) in pidmap.items():
-                    self.color_print('  {pid}  {cmd}'.format(pid=pidstr, cmd=cmd), '0;36')
+                    self.color_print(f'  {pidstr}  {cmd}', '0;36')
                 self.color_print('If you need to stop an active puppet run from finishing:', '0;33')
                 self.color_print('   puppetctl panic-stop --force', '0;33')
         else:
@@ -270,21 +271,21 @@ class PuppetctlExecution(object):
             others_disables = self.statefile_object.get_disable_lock_ids()
             others_noops = self.statefile_object.get_noop_lock_ids()
             if others_disables:
-                self.color_print(("Puppet is already in 'operate' mode for {you}, but other users "
-                                  "have puppet disabled.").format(you=self.invoking_user))
+                self.color_print(("Puppet is already in 'operate' mode for "
+                                  f'{self.invoking_user}, but other users have puppet disabled.'))
                 self.lock_status()
             elif others_noops:
                 root_noops = self.statefile_object.get_noop_lock_ids('root')
                 if others_noops == root_noops:
-                    self.color_print(("Puppet is already in 'operate' mode for {you}, but root has "
-                                      'puppet in noop mode.').format(you=self.invoking_user))
+                    self.color_print(("Puppet is already in 'operate' mode for "
+                                      f'{self.invoking_user}, but root has puppet in noop mode.'))
                     self.color_print(("This is an odd state caused by someone noop'ing puppet "
                                       'from a login root shell.'))
                     self.color_print('If this is your lock, `sudo su -` and run an operate.')
                 else:
-                    self.color_print(("Puppet is already in 'operate' mode for {you}, "
-                                      'but other users have puppet in noop mode.').format(
-                                          you=self.invoking_user))
+                    self.color_print(("Puppet is already in 'operate' mode for "
+                                      f'{self.invoking_user}, but other users have '
+                                      'puppet in noop mode.'))
                 self.lock_status()
             else:
                 self.color_print("Puppet is already in 'operate' mode.")
@@ -329,9 +330,9 @@ class PuppetctlExecution(object):
             if pidmap:
                 proc = "A 'puppet agent' process is" if (len(pidmap) == 1) \
                     else "Multiple 'puppet agent' processes are"
-                self.color_print('{proc} running:'.format(proc=proc), '0;36')
+                self.color_print(f'{proc} running:', '0;36')
                 for (pidstr, cmd) in pidmap.items():
-                    self.color_print('  {pid}  {cmd}'.format(pid=pidstr, cmd=cmd), '0;36')
+                    self.color_print(f'  {pidstr}  {cmd}', '0;36')
                 self.color_print('If you need to stop an active puppet run from finishing:', '0;33')
                 self.color_print('   puppetctl panic-stop --force', '0;33')
         else:
@@ -438,7 +439,8 @@ class PuppetctlExecution(object):
             return returnval
         try:
             # try to get the lock's contained value
-            with open(agent_catalog_run_lockfile, 'r') as lockfile:
+            with open(agent_catalog_run_lockfile,
+                      'r', encoding='utf-8') as lockfile:
                 pid_in_lock = lockfile.read()
         except IOError:  # proc has already terminated
             return returnval
@@ -452,7 +454,9 @@ class PuppetctlExecution(object):
             return returnval
         if pid_owner == 0:  # must be root-owned
             try:
-                cmdline_argv = open(path, 'r').read().split('\0')
+                with open(path, 'r',
+                          encoding='utf-8') as lock_cmdline:
+                    cmdline_argv = lock_cmdline.read().split('\0')
             except IOError:  # proc has already terminated
                 return returnval
             # sample cmdline_argv = ['/opt/puppetlabs/puppet/bin/ruby',
@@ -476,7 +480,7 @@ class PuppetctlExecution(object):
         # While there should only ever be one agent running, treat it as
         # potentially multiple, just in case we ever expand.
         for (pidstr, cmd) in pidmap.items():
-            self.color_print("Sending SIGTERM to pid {pid} / '{cmd}'".format(pid=pidstr, cmd=cmd))
+            self.color_print(f"Sending SIGTERM to pid {pidstr} / '{cmd}'")
             os.kill(int(pidstr), signal.SIGTERM)
         if not force:
             time.sleep(sleep_between_signals)
@@ -488,7 +492,7 @@ class PuppetctlExecution(object):
             self.log_print("No running 'puppet agent' found.")
             sys.exit(0)
         for (pidstr, cmd) in pidmap.items():
-            self.color_print("Sending SIGKILL to pid {pid} / '{cmd}'".format(pid=pidstr, cmd=cmd))
+            self.color_print(f"Sending SIGKILL to pid {pidstr} / '{cmd}'")
             os.kill(int(pidstr), signal.SIGKILL)
         # One last time
         time.sleep(1)
@@ -497,7 +501,7 @@ class PuppetctlExecution(object):
             self.log_print("No running 'puppet agent' found.")
             sys.exit(0)
         for (pidstr, cmd) in pidmap.items():
-            self.log_print("pid {pid} / '{cmd}' did NOT die.".format(pid=pidstr, cmd=cmd))
+            self.log_print(f"pid {pidstr} / '{cmd}' did NOT die.")
         sys.exit(1)
 
     def _parse_puppet_lastrunfile(self, lastrunfile):
@@ -512,19 +516,28 @@ class PuppetctlExecution(object):
         errors_script = rubyscript_base + "puts output['resources']['failed']"
         config_script = rubyscript_base + "puts output['version']['config']"
 
-        p_age = subprocess.Popen(['ruby', '-ryaml', '-e', age_script],
-                                 env={'PATH': self.puppet_bin_path}, stdout=subprocess.PIPE)
-        p_age.wait()
-        age = p_age.communicate()[0].rstrip()
-        p_errors = subprocess.Popen(['ruby', '-ryaml', '-e', errors_script],
-                                    env={'PATH': self.puppet_bin_path}, stdout=subprocess.PIPE)
-        p_errors.wait()
-        errors = p_errors.communicate()[0].rstrip()
-        p_config = subprocess.Popen(['ruby', '-ryaml', '-e', config_script],
-                                    env={'PATH': self.puppet_bin_path}, stdout=subprocess.PIPE)
-        p_config.wait()
-        config = p_config.communicate()[0].rstrip().decode()
-        now = int(time.time())
+        with subprocess.Popen(
+                ['ruby', '-ryaml', '-e', age_script],
+                env={'PATH': self.puppet_bin_path},
+                stdout=subprocess.PIPE,
+                ) as p_age:
+            p_age.wait()
+            age = p_age.communicate()[0].rstrip()
+        with subprocess.Popen(
+                ['ruby', '-ryaml', '-e', errors_script],
+                env={'PATH': self.puppet_bin_path},
+                stdout=subprocess.PIPE,
+                ) as p_errors:
+            p_errors.wait()
+            errors = p_errors.communicate()[0].rstrip()
+        with subprocess.Popen(
+                ['ruby', '-ryaml', '-e', config_script],
+                env={'PATH': self.puppet_bin_path},
+                stdout=subprocess.PIPE,
+                ) as p_config:
+            p_config.wait()
+            config = p_config.communicate()[0].rstrip().decode()
+            now = int(time.time())
         return {'age': now-int(age), 'errors': int(errors), 'config': config}
 
     @staticmethod
@@ -535,10 +548,10 @@ class PuppetctlExecution(object):
         hours = (secs - days*86400)//3600
         minutes = (secs - days*86400 - hours*3600)//60
         seconds = secs - days*86400 - hours*3600 - minutes*60
-        result = ('{0}d '.format(days) if days else "") + \
-                 ('{0}h '.format(hours) if hours else "") + \
-                 ('{0}m '.format(minutes) if minutes else "") + \
-                 ('{0}s '.format(seconds) if seconds else "")
+        result = (f'{days}d ' if days else "") + \
+                 (f'{hours}h ' if hours else "") + \
+                 (f'{minutes}m ' if minutes else "") + \
+                 (f'{seconds}s ' if seconds else "")
         if result == '':
             result = '0s '
         return result.rstrip()
@@ -552,7 +565,7 @@ class PuppetctlExecution(object):
             return {'errors': 0, 'message': ('Cannot provide the last run information '
                                              'on puppet without being root.')}
         if not os.path.exists(lastrunfile):
-            msg = 'No "{}" file to get puppet information from.'.format(lastrunfile)
+            msg = f'No "{lastrunfile}" file to get puppet information from.'
             return {'errors': 0, 'message': msg, }
         last_run_data = self._parse_puppet_lastrunfile(lastrunfile)
         msg_template = 'Puppet last ran {dhms} ago with {errors} errors, applied version {config}'
@@ -579,6 +592,10 @@ class PuppetctlExecution(object):
         elif not disable_locks and nooperate_locks:
             color = '0;36'
         elif not disable_locks and not nooperate_locks:
+            color = None
+        else:  # pragma: no cover
+            # This should never happen since we covered the matrix above,
+            # but let's cover off weirdness
             color = None
 
         if color is None:
